@@ -94,9 +94,11 @@ local function ApplyCountdownFont(frame, font2)
     if not frame.cooldown.GetCountdownFontString then return end
     local cdText = frame.cooldown:GetCountdownFontString()
     if not cdText then return end
-    -- Re-parent once so text renders above icon (iconFrame is above cooldown)
+    -- Re-parent to iconFrame so text renders above icon, and center on the icon
     if frame.iconFrame and cdText:GetParent() ~= frame.iconFrame then
         cdText:SetParent(frame.iconFrame)
+        cdText:ClearAllPoints()
+        cdText:SetPoint("CENTER", frame.iconFrame, "CENTER", 0, 0)
     end
     if font2 then
         local fontFace = F.GetFont(font2[1]) or cdText:GetFont()
