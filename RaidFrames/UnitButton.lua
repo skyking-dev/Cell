@@ -1574,11 +1574,13 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
                         self.indicators.raidDebuffs[i]:SetCooldownFromAura(
                             unit, auraInstanceID, auraInfo.icon, auraInfo.refreshing)
                         -- Dispel color: border = dispel type color (base), swipe = black
+                        -- Same pattern as regular debuffs in showDebuff
                         local frame = self.indicators.raidDebuffs[i]
                         if frame.cooldown and frame.cooldown.SetSwipeColor then
                             frame.cooldown:SetSwipeColor(0, 0, 0)
                         end
                         if auraInfo._hasSecrets and (auraInfo.dispelName == nil) then
+                            -- Non-dispellable secret: red
                             if frame.border then frame.border:SetColorTexture(1, 0, 0); frame.border:Show() end
                         elseif auraInfo._hasSecrets and _dispelCurvesReady then
                             local hlColor = _getCurveColor(unit, auraInstanceID, _dispelHighlightCurve)
