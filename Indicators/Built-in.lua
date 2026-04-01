@@ -109,6 +109,14 @@ function I.Cooldowns_ShowAnimation(self, show)
     end
 end
 
+function I.Cooldowns_SetCooldownStyle(self, style)
+    for i = 1, #self do
+        if self[i].SetCooldownStyle then
+            self[i]:SetCooldownStyle(style)
+        end
+    end
+end
+
 function I.Cooldowns_UpdatePixelPerfect(self)
     P.Repoint(self)
     for i = 1, #self do
@@ -214,6 +222,7 @@ function I.CreateDefensiveCooldowns(parent)
     defensiveCooldowns.SetOrientation = I.Cooldowns_SetOrientation
     defensiveCooldowns.ShowDuration = I.Cooldowns_ShowDuration
     defensiveCooldowns.ShowAnimation = I.Cooldowns_ShowAnimation
+    defensiveCooldowns.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     defensiveCooldowns.SetupGlow = I.Glow_SetupForChildren
     defensiveCooldowns.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
@@ -241,6 +250,7 @@ function I.CreateExternalCooldowns(parent)
     externalCooldowns.SetOrientation = I.Cooldowns_SetOrientation
     externalCooldowns.ShowDuration = I.Cooldowns_ShowDuration
     externalCooldowns.ShowAnimation = I.Cooldowns_ShowAnimation
+    externalCooldowns.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     externalCooldowns.SetupGlow = I.Glow_SetupForChildren
     externalCooldowns.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
@@ -268,6 +278,7 @@ function I.CreateAllCooldowns(parent)
     allCooldowns.SetOrientation = I.Cooldowns_SetOrientation
     allCooldowns.ShowDuration = I.Cooldowns_ShowDuration
     allCooldowns.ShowAnimation = I.Cooldowns_ShowAnimation
+    allCooldowns.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     allCooldowns.SetupGlow = I.Glow_SetupForChildren
     allCooldowns.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
@@ -471,7 +482,8 @@ local function Debuffs_EnableBlacklistShortcut(debuffs, enabled)
         if enabled then
             debuffs[i]:SetScript("OnMouseUp", function(self, button, isInside)
                 if button == "RightButton" and isInside and IsLeftAltKeyDown() and IsLeftControlKeyDown()
-                    and self.spellId and not F.TContains(CellDB["debuffBlacklist"], self.spellId) then
+                    and self.spellId and F.IsValueNonSecret(self.spellId)
+                    and not F.TContains(CellDB["debuffBlacklist"], self.spellId) then
                     -- print msg
                     local name, icon = F.GetSpellInfo(self.spellId)
                     if name and icon then
@@ -515,6 +527,7 @@ function I.CreateDebuffs(parent)
 
     debuffs.ShowDuration = I.Cooldowns_ShowDuration
     debuffs.ShowAnimation = I.Cooldowns_ShowAnimation
+    debuffs.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     debuffs.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
     debuffs.ShowTooltip = Debuffs_ShowTooltip
@@ -2640,6 +2653,7 @@ function I.CreateMissingBuffs(parent)
     missingBuffs.SetSize = I.Cooldowns_SetSize
     missingBuffs.UpdateSize = I.Cooldowns_UpdateSize
     missingBuffs.SetOrientation = I.Cooldowns_SetOrientation
+    missingBuffs.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     missingBuffs.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
     for i = 1, 3 do

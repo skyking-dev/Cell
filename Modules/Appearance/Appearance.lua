@@ -593,9 +593,50 @@ local gradientCB, thresholdCP1, thresholdCP2, thresholdCP3, thresholdDropdown, c
 local gradientLossCB, thresholdLossCP1, thresholdLossCP2, thresholdLossCP3, thresholdLossDropdown1, thresholdLossDropdown2
 local barAlpha, lossAlpha, bgAlpha, oorAlpha, predCB, absorbCB, invertColorCB, shieldCB, oversCB, reverseCB
 local predCustomCB, predColorPicker, absorbColorPicker, shieldColorPicker, oversColorPicker
-local iconOptionsBtn, iconOptionsFrame, iconAnimationDropdown, durationRoundUpCB, durationDecimalText1, durationDecimalText2, durationDecimalDropdown, durationColorCB, durationNormalCP, durationPercentCP, durationSecondCP, durationPercentDD, durationSecondEB, durationSecondText
+local iconOptionsBtn, iconOptionsFrame, cooldownStyleDropdown, iconAnimationDropdown, durationRoundUpCB, durationDecimalText1, durationDecimalText2, durationDecimalDropdown, durationColorCB, durationNormalCP, durationPercentCP, durationSecondCP, durationPercentDD, durationSecondEB, durationSecondText
 
 local LSM = LibStub("LibSharedMedia-3.0", true)
+
+local function GetConfiguredCooldownStyle()
+    local style = CellDB["appearance"]["cooldownStyle"]
+    if style ~= "CLOCK" and style ~= "VERTICAL" then
+        style = CELL_COOLDOWN_STYLE == "CLOCK" and "CLOCK" or "VERTICAL"
+        CellDB["appearance"]["cooldownStyle"] = style
+    end
+    return style
+end
+
+local function ApplyCooldownStyleToButton(button, style)
+    if not button or not button.indicators then return end
+
+    for _, indicator in pairs(button.indicators) do
+        if indicator and indicator.SetCooldownStyle then
+            indicator:SetCooldownStyle(style)
+        end
+    end
+end
+
+local function UpdatePreviewCooldownStyle(style)
+    if not barIcon1 or not barIcon2 then return end
+
+    if barIcon1.SetCooldownStyle then
+        barIcon1:SetCooldownStyle(style)
+    end
+    if barIcon2.SetCooldownStyle then
+        barIcon2:SetCooldownStyle(style)
+    end
+
+    barIcon1:ShowAnimation(true)
+    barIcon2:ShowAnimation(true)
+
+    if barIcon1:IsShown() then
+        barIcon1:SetCooldown(GetTime(), 13, "", 132155, 5)
+    end
+    if barIcon2:IsShown() then
+        barIcon2:SetCooldown(GetTime(), 13, nil, 136085, 0)
+    end
+end
+
 local function CheckTextures()
     local items = {}
     local textures, textureNames
@@ -649,7 +690,7 @@ local function CreateIconOptionsFrame()
         appearanceTab.mask:Hide()
     end
 
-    iconOptionsFrame = Cell.CreateFrame("CellOptionsFrame_IconOptions", appearanceTab, 230, 235)
+    iconOptionsFrame = Cell.CreateFrame("CellOptionsFrame_IconOptions", appearanceTab, 230, 270)
     iconOptionsFrame:SetBackdropBorderColor(unpack(Cell.GetAccentColorTable()))
     iconOptionsFrame:SetPoint("TOP", iconOptionsBtn, "BOTTOM", 0, -5)
     iconOptionsFrame:SetPoint("RIGHT", -5, 0)
@@ -665,9 +706,34 @@ local function CreateIconOptionsFrame()
         iconOptionsBtn:SetFrameLevel(appearanceTab:GetFrameLevel() + 1)
     end)
 
+    cooldownStyleDropdown = Cell.CreateDropdown(iconOptionsFrame, 180)
+    cooldownStyleDropdown:SetPoint("TOPLEFT", iconOptionsFrame, 10, -25)
+    cooldownStyleDropdown:SetItems({
+        {
+            ["text"] = L["Vertical"],
+            ["value"] = "VERTICAL",
+            ["onClick"] = function()
+                CellDB["appearance"]["cooldownStyle"] = "VERTICAL"
+                Cell.Fire("UpdateAppearance", "cooldownStyle")
+            end,
+        },
+        {
+            ["text"] = L["Clock"],
+            ["value"] = "CLOCK",
+            ["onClick"] = function()
+                CellDB["appearance"]["cooldownStyle"] = "CLOCK"
+                Cell.Fire("UpdateAppearance", "cooldownStyle")
+            end,
+        },
+    })
+
+    local cooldownStyleText = iconOptionsFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    cooldownStyleText:SetPoint("BOTTOMLEFT", cooldownStyleDropdown, "TOPLEFT", 0, 1)
+    cooldownStyleText:SetText(L["Cooldown Style"])
+
     -- icon animation
     iconAnimationDropdown = Cell.CreateDropdown(iconOptionsFrame, 180)
-    iconAnimationDropdown:SetPoint("TOPLEFT", iconOptionsFrame, 10, -25)
+    iconAnimationDropdown:SetPoint("TOPLEFT", cooldownStyleDropdown, "BOTTOMLEFT", 0, -25)
     iconAnimationDropdown:SetItems({
         {
             ["text"] = L["+ Stack & Duration"],
@@ -1630,6 +1696,64 @@ end
 -- functions
 -------------------------------------------------
 local init
+local function LoadThresholdWidgets()
+    local c = CellDB["appearance"]["colorThresholds"]
+    gradientCB:SetChecked(c[6])
+    thresholdCP1:SetColor(c[1][1], c[1][2], c[1][3])
+    thresholdCP2:SetColor(c[2][1], c[2][2], c[2][3])
+    thresholdCP3:SetColor(c[3][1], c[3][2], c[3][3])
+    thresholdDropdown:SetSelectedValue(c[4])
+    colorThresholdDropdown2:SetSelectedValue(c[5])
+
+    local d = CellDB["appearance"]["colorThresholdsLoss"]
+    gradientLossCB:SetChecked(d[6])
+    thresholdLossCP1:SetColor(d[1][1], d[1][2], d[1][3])
+    thresholdLossCP2:SetColor(d[2][1], d[2][2], d[2][3])
+    thresholdLossCP3:SetColor(d[3][1], d[3][2], d[3][3])
+    thresholdLossDropdown1:SetSelectedValue(d[4])
+    thresholdLossDropdown2:SetSelectedValue(d[5])
+end
+
+local function LoadShieldAndAlphaWidgets()
+    targetColorPicker:SetColor(CellDB["appearance"]["targetColor"])
+    mouseoverColorPicker:SetColor(CellDB["appearance"]["mouseoverColor"])
+    highlightSize:SetValue(CellDB["appearance"]["highlightSize"])
+    oorAlpha:SetValue(CellDB["appearance"]["outOfRangeAlpha"]*100)
+    barAlpha:SetValue(CellDB["appearance"]["barAlpha"]*100)
+    lossAlpha:SetValue(CellDB["appearance"]["lossAlpha"]*100)
+    bgAlpha:SetValue(CellDB["appearance"]["bgAlpha"]*100)
+
+    predCB:SetChecked(CellDB["appearance"]["healPrediction"][1])
+    absorbCB:SetChecked(CellDB["appearance"]["healAbsorb"][1])
+    invertColorCB:SetChecked(CellDB["appearance"]["healAbsorbInvertColor"])
+    shieldCB:SetChecked(CellDB["appearance"]["shield"][1])
+    oversCB:SetChecked(CellDB["appearance"]["overshield"][1])
+    reverseCB:SetChecked(CellDB["appearance"]["overshieldReverseFill"])
+
+    predCustomCB:SetChecked(CellDB["appearance"]["healPrediction"][2])
+    predColorPicker:SetColor(unpack(CellDB["appearance"]["healPrediction"][3]))
+    absorbColorPicker:SetColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
+    shieldColorPicker:SetColor(unpack(CellDB["appearance"]["shield"][2]))
+    oversColorPicker:SetColor(unpack(CellDB["appearance"]["overshield"][2]))
+end
+
+local function LoadIconOptionWidgets()
+    local auraIconOptions = CellDB["appearance"]["auraIconOptions"]
+
+    cooldownStyleDropdown:SetSelectedValue(GetConfiguredCooldownStyle())
+    iconAnimationDropdown:SetSelectedValue(auraIconOptions["animation"])
+    durationRoundUpCB:SetChecked(auraIconOptions["durationRoundUp"])
+    Cell.SetEnabled(not auraIconOptions["durationRoundUp"], durationDecimalText1, durationDecimalText2, durationDecimalDropdown)
+    durationDecimalDropdown:SetSelectedValue(auraIconOptions["durationDecimal"])
+    durationColorCB:SetChecked(auraIconOptions["durationColorEnabled"])
+    Cell.SetEnabled(auraIconOptions["durationColorEnabled"], durationNormalCP, durationPercentCP, durationPercentDD, durationSecondCP, durationSecondEB, durationSecondText)
+    durationNormalCP:SetColor(auraIconOptions["durationColors"][1])
+    durationPercentCP:SetColor(auraIconOptions["durationColors"][2][1], auraIconOptions["durationColors"][2][2], auraIconOptions["durationColors"][2][3])
+    durationPercentDD:SetSelectedValue(auraIconOptions["durationColors"][2][4])
+    durationSecondCP:SetColor(auraIconOptions["durationColors"][3][1], auraIconOptions["durationColors"][3][2], auraIconOptions["durationColors"][3][3])
+    durationSecondEB:SetText(auraIconOptions["durationColors"][3][4])
+end
+
 LoadButtonStyle = function()
     if not init then CheckTextures() end
 
@@ -1655,56 +1779,9 @@ LoadButtonStyle = function()
 
     barAnimationDropdown:SetSelected(L[CellDB["appearance"]["barAnimation"]])
 
-    local c = CellDB["appearance"]["colorThresholds"]
-    gradientCB:SetChecked(c[6])
-    thresholdCP1:SetColor(c[1][1], c[1][2], c[1][3])
-    thresholdCP2:SetColor(c[2][1], c[2][2], c[2][3])
-    thresholdCP3:SetColor(c[3][1], c[3][2], c[3][3])
-    thresholdDropdown:SetSelectedValue(c[4])
-    colorThresholdDropdown2:SetSelectedValue(c[5])
-
-    local d = CellDB["appearance"]["colorThresholdsLoss"]
-    gradientLossCB:SetChecked(d[6])
-    thresholdLossCP1:SetColor(d[1][1], d[1][2], d[1][3])
-    thresholdLossCP2:SetColor(d[2][1], d[2][2], d[2][3])
-    thresholdLossCP3:SetColor(d[3][1], d[3][2], d[3][3])
-    thresholdLossDropdown1:SetSelectedValue(d[4])
-    thresholdLossDropdown2:SetSelectedValue(d[5])
-
-    targetColorPicker:SetColor(CellDB["appearance"]["targetColor"])
-    mouseoverColorPicker:SetColor(CellDB["appearance"]["mouseoverColor"])
-    highlightSize:SetValue(CellDB["appearance"]["highlightSize"])
-    oorAlpha:SetValue(CellDB["appearance"]["outOfRangeAlpha"]*100)
-    barAlpha:SetValue(CellDB["appearance"]["barAlpha"]*100)
-    lossAlpha:SetValue(CellDB["appearance"]["lossAlpha"]*100)
-    bgAlpha:SetValue(CellDB["appearance"]["bgAlpha"]*100)
-
-    predCB:SetChecked(CellDB["appearance"]["healPrediction"][1])
-    -- useLibCB:SetChecked(CellDB["appearance"]["useLibHealComm"])
-    absorbCB:SetChecked(CellDB["appearance"]["healAbsorb"][1])
-    invertColorCB:SetChecked(CellDB["appearance"]["healAbsorbInvertColor"])
-    shieldCB:SetChecked(CellDB["appearance"]["shield"][1])
-    oversCB:SetChecked(CellDB["appearance"]["overshield"][1])
-    reverseCB:SetChecked(CellDB["appearance"]["overshieldReverseFill"])
-
-    predCustomCB:SetChecked(CellDB["appearance"]["healPrediction"][2])
-    predColorPicker:SetColor(unpack(CellDB["appearance"]["healPrediction"][3]))
-    absorbColorPicker:SetColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
-    shieldColorPicker:SetColor(unpack(CellDB["appearance"]["shield"][2]))
-    oversColorPicker:SetColor(unpack(CellDB["appearance"]["overshield"][2]))
-
-    -- icon options
-    iconAnimationDropdown:SetSelectedValue(CellDB["appearance"]["auraIconOptions"]["animation"])
-    durationRoundUpCB:SetChecked(CellDB["appearance"]["auraIconOptions"]["durationRoundUp"])
-    Cell.SetEnabled(not CellDB["appearance"]["auraIconOptions"]["durationRoundUp"], durationDecimalText1, durationDecimalText2, durationDecimalDropdown)
-    durationDecimalDropdown:SetSelectedValue(CellDB["appearance"]["auraIconOptions"]["durationDecimal"])
-    durationColorCB:SetChecked(CellDB["appearance"]["auraIconOptions"]["durationColorEnabled"])
-    Cell.SetEnabled(CellDB["appearance"]["auraIconOptions"]["durationColorEnabled"], durationNormalCP, durationPercentCP, durationPercentDD, durationSecondCP, durationSecondEB, durationSecondText)
-    durationNormalCP:SetColor(CellDB["appearance"]["auraIconOptions"]["durationColors"][1])
-    durationPercentCP:SetColor(CellDB["appearance"]["auraIconOptions"]["durationColors"][2][1], CellDB["appearance"]["auraIconOptions"]["durationColors"][2][2], CellDB["appearance"]["auraIconOptions"]["durationColors"][2][3])
-    durationPercentDD:SetSelectedValue(CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4])
-    durationSecondCP:SetColor(CellDB["appearance"]["auraIconOptions"]["durationColors"][3][1], CellDB["appearance"]["auraIconOptions"]["durationColors"][3][2], CellDB["appearance"]["auraIconOptions"]["durationColors"][3][3])
-    durationSecondEB:SetText(CellDB["appearance"]["auraIconOptions"]["durationColors"][3][4])
+    LoadThresholdWidgets()
+    LoadShieldAndAlphaWidgets()
+    LoadIconOptionWidgets()
 end
 
 LoadDebuffTypeColor = function()
@@ -1831,6 +1908,8 @@ local function UpdateAppearance(which)
 
     -- icon options
     if not which or which == "icon" or which == "reset" then
+        CELL_COOLDOWN_STYLE = GetConfiguredCooldownStyle()
+
         -- animation
         Cell.vars.iconAnimation = CellDB["appearance"]["auraIconOptions"]["animation"]
 
@@ -1846,6 +1925,25 @@ local function UpdateAppearance(which)
         else
             Cell.vars.iconDurationColors = nil
         end
+    end
+
+    if which == "cooldownStyle" or which == "reset" then
+        local cooldownStyle = GetConfiguredCooldownStyle()
+        CELL_COOLDOWN_STYLE = cooldownStyle
+
+        if cooldownStyleDropdown then
+            cooldownStyleDropdown:SetSelectedValue(cooldownStyle)
+        end
+
+        if init then
+            UpdatePreviewCooldownStyle(cooldownStyle)
+        end
+
+        F.IterateAllUnitButtons(function(b)
+            ApplyCooldownStyleToButton(b, cooldownStyle)
+        end)
+
+        Cell.Fire("UpdateIndicators")
     end
 
     -- scale

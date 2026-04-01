@@ -2,6 +2,9 @@
 
 # Cell
 
+This repository is a public fork maintained by `skyking-dev`.
+Upstream sync target: <https://github.com/jdtoppin/Cell>. The addon identity remains `Cell`.
+
 [![version](https://img.shields.io/github/v/release/enderneko/Cell)](https://github.com/enderneko/Cell/releases)
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/enderneko/Cell)](https://github.com/enderneko/Cell/commits/master)
 [![last commit](https://img.shields.io/github/last-commit/enderneko/Cell)](https://github.com/enderneko/Cell/commits/master)

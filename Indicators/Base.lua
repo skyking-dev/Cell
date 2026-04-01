@@ -89,17 +89,26 @@ end
 -------------------------------------------------
 -- Apply font settings to Blizzard's CooldownFrame countdown text (Midnight)
 -- Only applies to CooldownFrame cooldowns (BorderIcon), not StatusBar (BarIcon)
+local function GetCountdownFrame(frame)
+    return frame._countdownCooldown or frame.cooldown
+end
+
 local function ApplyCountdownFont(frame, font2)
-    if not frame.cooldown then return end
-    if not frame.cooldown.GetCountdownFontString then return end
-    local cdText = frame.cooldown:GetCountdownFontString()
+    local countdown = GetCountdownFrame(frame)
+    if not countdown then return end
+    if not countdown.GetCountdownFontString then return end
+    local cdText = countdown:GetCountdownFontString()
     if not cdText then return end
-    -- Re-parent to iconFrame so text renders above icon, and center on the icon
-    if frame.iconFrame and cdText:GetParent() ~= frame.iconFrame then
-        cdText:SetParent(frame.iconFrame)
+
+    local textParent = frame._countdownTextParent or frame.iconFrame
+    if textParent then
+        if cdText:GetParent() ~= textParent then
+            cdText:SetParent(textParent)
+        end
         cdText:ClearAllPoints()
-        cdText:SetPoint("CENTER", frame.iconFrame, "CENTER", 0, 0)
+        cdText:SetPoint("CENTER", textParent, "CENTER", 0, 0)
     end
+
     if font2 then
         local fontFace = F.GetFont(font2[1]) or cdText:GetFont()
         local fontSize = font2[2] or 11
@@ -135,6 +144,9 @@ local function Shared_ShowDuration(frame, show)
     frame.showDuration = show
     frame.duration:SetShown(show)
 end
+
+local STATUSBAR_INTERPOLATION_NONE = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.None
+local STATUSBAR_TIMER_DIRECTION_ELAPSED = Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime
 
 -------------------------------------------------
 -- VerticalCooldown
@@ -276,8 +288,10 @@ end
 -- SetCooldownStyle
 -------------------------------------------------
 local function Shared_SetCooldownStyle(frame, style, noIcon)
+    style = style == "CLOCK" and "CLOCK" or "VERTICAL"
     if frame.style == style then return end
 
+    local oldCooldown = frame.cooldown
     if frame.cooldown then
         frame.cooldown:SetParent(nil)
         frame.cooldown:Hide()
@@ -293,6 +307,13 @@ local function Shared_SetCooldownStyle(frame, style, noIcon)
         else
             Shared_CreateCooldown_Vertical(frame)
         end
+    end
+
+    if oldCooldown and frame.stack and frame.stack:GetParent() == oldCooldown then
+        frame.stack:SetParent(frame.cooldown)
+    end
+    if oldCooldown and frame.duration and frame.duration:GetParent() == oldCooldown then
+        frame.duration:SetParent(frame.cooldown)
     end
 end
 
@@ -479,6 +500,192 @@ end
 local _GetAuraDuration = C_UnitAuras and C_UnitAuras.GetAuraDuration
 local _GetAuraAppDisplayCount = C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount
 
+local function BorderIcon_GetCountdownCooldown(frame)
+    return frame._countdownCooldown or frame.cooldown
+end
+
+local function BorderIcon_SetCountdownVisibility(frame, show)
+    local countdown = BorderIcon_GetCountdownCooldown(frame)
+    if countdown and countdown.SetHideCountdownNumbers then
+        countdown:SetHideCountdownNumbers(not show)
+    end
+end
+
+local function BorderIcon_CreateClockCooldown(frame)
+    local cooldown = CreateFrame("Cooldown", nil, frame)
+    frame.cooldown = cooldown
+    cooldown:SetAllPoints(frame)
+    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
+    cooldown:SetSwipeColor(1, 1, 1)
+    cooldown:SetHideCountdownNumbers(true)
+    if Cell.isMidnight and cooldown.SetCountdownAbbrevThreshold then
+        cooldown:SetCountdownAbbrevThreshold(60)
+    end
+    cooldown.noCooldownCount = true
+    cooldown._SetCooldown = cooldown.SetCooldown
+    cooldown.SetCooldown = nil
+
+    frame._countdownTextParent = frame.iconFrame
+end
+
+local function BorderIcon_CreateVerticalCountdown(frame)
+    local countdown = CreateFrame("Cooldown", nil, frame.cooldown)
+    frame._countdownCooldown = countdown
+    countdown:SetFrameLevel(frame.cooldown:GetFrameLevel() + 1)
+    P.Point(countdown, "TOPLEFT")
+    P.Point(countdown, "BOTTOMRIGHT")
+    countdown:SetDrawSwipe(false)
+    countdown:SetDrawEdge(false)
+    countdown:SetDrawBling(false)
+    countdown:SetHideCountdownNumbers(true)
+    if Cell.isMidnight and countdown.SetCountdownAbbrevThreshold then
+        countdown:SetCountdownAbbrevThreshold(60)
+    end
+    countdown.noCooldownCount = true
+    countdown._SetCooldown = countdown.SetCooldown
+    countdown.SetCooldown = nil
+
+    frame._countdownTextParent = countdown
+end
+
+local function BorderIcon_Vertical_OnUpdate(self, elapsed)
+    self.elapsed = (self.elapsed or 0) + elapsed
+    if self.elapsed >= 0.1 then
+        self._currentValue = (self._currentValue or 0) + self.elapsed
+        if self._duration and self._currentValue > self._duration then
+            self._currentValue = self._duration
+        end
+        self:SetValue(self._currentValue)
+        self.elapsed = 0
+
+        if self._duration and self._currentValue >= self._duration then
+            self:SetScript("OnUpdate", nil)
+            if not self._cooldownDoneFired then
+                self._cooldownDoneFired = true
+                local onCooldownDone = self:GetScript("OnCooldownDone")
+                if onCooldownDone then
+                    onCooldownDone(self)
+                end
+            end
+        end
+    end
+end
+
+local function BorderIcon_Vertical_ShowCooldown(self, start, duration)
+    self._cooldownDoneFired = false
+    self:SetScript("OnUpdate", BorderIcon_Vertical_OnUpdate)
+    self.elapsed = 0.1
+    self._duration = duration
+    self:SetMinMaxValues(0, duration)
+    self._currentValue = GetTime() - start
+    if self._currentValue < 0 then self._currentValue = 0 end
+    if self._currentValue > duration then self._currentValue = duration end
+    self:SetValue(self._currentValue)
+    self:Show()
+end
+
+local function BorderIcon_Vertical_SetDurationObject(self, durObj)
+    self:SetScript("OnUpdate", nil)
+    self.elapsed = nil
+    self._duration = nil
+    self._currentValue = nil
+    self:SetMinMaxValues(0, 1)
+    self:SetTimerDuration(durObj, STATUSBAR_INTERPOLATION_NONE, STATUSBAR_TIMER_DIRECTION_ELAPSED)
+    if self.SetToTargetValue then
+        self:SetToTargetValue()
+    end
+    self:Show()
+end
+
+local function BorderIcon_CreateVerticalCooldown(frame)
+    local cooldown = CreateFrame("StatusBar", nil, frame.iconFrame)
+    frame.cooldown = cooldown
+    cooldown:Hide()
+    cooldown:SetFrameLevel(frame.iconFrame:GetFrameLevel() + 1)
+    P.Point(cooldown, "TOPLEFT")
+    P.Point(cooldown, "BOTTOMRIGHT")
+    cooldown:SetOrientation("VERTICAL")
+    cooldown:SetReverseFill(true)
+    cooldown:SetStatusBarTexture(Cell.vars.whiteTexture)
+    cooldown._SetScript = cooldown.SetScript
+    cooldown._GetScript = cooldown.GetScript
+    cooldown.ShowCooldown = BorderIcon_Vertical_ShowCooldown
+    cooldown.SetDurationObject = BorderIcon_Vertical_SetDurationObject
+    cooldown.SetCooldown = BorderIcon_Vertical_ShowCooldown
+    cooldown.SetReverse = function(self, reverse)
+        self:SetReverseFill(reverse)
+    end
+    cooldown.SetSwipeColor = function(self, r, g, b, a)
+        self:GetStatusBarTexture():SetVertexColor(r, g, b, a or 0.77)
+    end
+    cooldown.SetScript = function(self, scriptType, handler)
+        if scriptType == "OnCooldownDone" then
+            self._onCooldownDone = handler
+            return
+        end
+        return self:_SetScript(scriptType, handler)
+    end
+    cooldown.GetScript = function(self, scriptType)
+        if scriptType == "OnCooldownDone" then
+            return self._onCooldownDone
+        end
+        return self:_GetScript(scriptType)
+    end
+    cooldown:GetStatusBarTexture():SetVertexColor(0, 0, 0, 0.77)
+
+    local spark = cooldown:CreateTexture(nil, "OVERLAY")
+    cooldown.spark = spark
+    P.Height(spark, 1)
+    spark:SetColorTexture(0.7, 0.7, 0.7, 0.9)
+    spark:SetPoint("TOPLEFT", cooldown:GetStatusBarTexture(), "BOTTOMLEFT")
+    spark:SetPoint("TOPRIGHT", cooldown:GetStatusBarTexture(), "BOTTOMRIGHT")
+
+    if Cell.isMidnight then
+        BorderIcon_CreateVerticalCountdown(frame)
+    else
+        frame._countdownTextParent = cooldown
+    end
+end
+
+local function BorderIcon_SetCooldownStyle(frame, style)
+    style = style == "CLOCK" and "CLOCK" or "VERTICAL"
+    if frame.style == style then return end
+
+    if frame.cooldown then
+        frame.cooldown:SetParent(nil)
+        frame.cooldown:Hide()
+        frame.cooldown = nil
+    end
+    if frame._countdownCooldown then
+        frame._countdownCooldown:SetParent(nil)
+        frame._countdownCooldown:Hide()
+        frame._countdownCooldown = nil
+    end
+
+    frame.style = style
+    frame._countdownTextParent = nil
+    frame._countdownFontApplied = false
+
+    if style == "CLOCK" then
+        BorderIcon_CreateClockCooldown(frame)
+        frame.stack:SetParent(frame.iconFrame)
+        frame.duration:SetParent(frame.iconFrame)
+    else
+        BorderIcon_CreateVerticalCooldown(frame)
+        frame.stack:SetParent(frame.cooldown)
+        frame.duration:SetParent(frame.cooldown)
+    end
+
+    if Cell.isMidnight then
+        frame.duration:Hide()
+        BorderIcon_SetCountdownVisibility(frame, frame.showDuration)
+        if frame.showDuration then
+            ApplyCountdownFont(frame, frame._durationFont)
+            frame._countdownFontApplied = true
+        end
+    end
+end
+
 -- BorderIcon: SetCooldownFromAura — drives CooldownFrame with DurationObject
 local function BorderIcon_SetCooldownFromAura(frame, unit, auraInstanceID, texture, refreshing)
     -- Icon and stack
@@ -494,27 +701,40 @@ local function BorderIcon_SetCooldownFromAura(frame, unit, auraInstanceID, textu
     -- Swipe color defaults to black; UnitButton.lua overrides border/swipe color
     -- for dispel types via bracket curves after this call.
     local durObj = _GetAuraDuration and _GetAuraDuration(unit, auraInstanceID)
-    if durObj and frame.cooldown and frame.cooldown._SetCooldown
+    if durObj and frame.style == "VERTICAL" and frame.cooldown and frame.cooldown.SetDurationObject then
+        frame.cooldown:SetDurationObject(durObj)
+        if frame._countdownCooldown and frame._countdownCooldown.SetCooldownFromDurationObject then
+            frame._countdownCooldown:SetReverse(true)
+            frame._countdownCooldown:SetCooldownFromDurationObject(durObj, true)
+            BorderIcon_SetCountdownVisibility(frame, frame.showDuration)
+            if frame.showDuration and not frame._countdownFontApplied then
+                ApplyCountdownFont(frame, frame._durationFont)
+                frame._countdownFontApplied = true
+            end
+            frame._countdownCooldown:Show()
+        end
+    elseif durObj and frame.cooldown and frame.cooldown._SetCooldown
         and frame.cooldown.SetCooldownFromDurationObject then
-        -- Countdown numbers visibility is managed by BorderIcon_ShowDuration
         frame.cooldown:SetReverse(true)
         frame.cooldown:SetCooldownFromDurationObject(durObj, true)
-        -- Apply font settings once (cached via _countdownFontApplied flag)
-        if not frame._countdownFontApplied then
+        BorderIcon_SetCountdownVisibility(frame, frame.showDuration)
+        if frame.showDuration and not frame._countdownFontApplied then
             ApplyCountdownFont(frame, frame._durationFont)
             frame._countdownFontApplied = true
         end
-        -- Keep border visible as base color (caller sets color); black swipe fills over it
         frame.cooldown:Show()
     else
-        -- No cooldown animation — show static border
+        if frame._countdownCooldown then
+            frame._countdownCooldown:Hide()
+        end
         frame.border:Show()
         frame.border:SetColorTexture(0, 0, 0)
         frame.cooldown:Hide()
     end
 
-    -- Duration text hidden on Midnight (SetFormattedText produces invisible output with secrets)
-    frame.duration:Hide()
+    if Cell.isMidnight then
+        frame.duration:Hide()
+    end
     frame:SetScript("OnUpdate", nil)
     frame:Show()
 
@@ -584,6 +804,9 @@ local function BorderIcon_SetCooldown(frame, start, duration, debuffType, textur
         frame.border:Show()
         frame.border:SetColorTexture(r, g, b)
         frame.cooldown:Hide()
+        if frame._countdownCooldown then
+            frame._countdownCooldown:Hide()
+        end
         frame.duration:Hide()
         frame:SetScript("OnUpdate", nil)
         frame._start = nil
@@ -593,29 +816,84 @@ local function BorderIcon_SetCooldown(frame, start, duration, debuffType, textur
         frame._threshold = nil
         frame._elapsedTime = nil
     else
-        frame.border:Hide()
-        frame.cooldown:Show()
-        frame.cooldown:SetSwipeColor(r, g, b)
-        frame.cooldown:_SetCooldown(start, duration)
+        frame:SetScript("OnUpdate", nil)
+        frame._start = nil
+        frame._duration = nil
+        frame._remain = nil
+        frame._elapsed = nil
+        frame._threshold = nil
+        frame._elapsedTime = nil
 
-        if not frame.showDuration then
-            frame.duration:Hide()
-        else
-            if frame.showDuration == true then
-                frame._threshold = duration
-            elseif frame.showDuration >= 1 then
-                frame._threshold = frame.showDuration
-            else -- < 1
-                frame._threshold = frame.showDuration * duration
+        if frame.style == "VERTICAL" then
+            frame.border:Show()
+            frame.border:SetColorTexture(r, g, b)
+            frame.cooldown:ShowCooldown(start, duration)
+            if Cell.isMidnight and frame._countdownCooldown and frame._countdownCooldown._SetCooldown then
+                frame.duration:Hide()
+                frame._countdownCooldown:_SetCooldown(start, duration)
+                BorderIcon_SetCountdownVisibility(frame, frame.showDuration)
+                if frame.showDuration then
+                    ApplyCountdownFont(frame, frame._durationFont)
+                    frame._countdownFontApplied = true
+                end
+                frame._countdownCooldown:Show()
+            else
+                if not frame.showDuration then
+                    frame.duration:Hide()
+                else
+                    if frame.showDuration == true then
+                        frame._threshold = duration
+                    elseif frame.showDuration >= 1 then
+                        frame._threshold = frame.showDuration
+                    else -- < 1
+                        frame._threshold = frame.showDuration * duration
+                    end
+                    frame.duration:Show()
+                    frame._start = start
+                    frame._duration = duration
+                    frame._elapsed = 0.1 -- update immediately
+                    frame:SetScript("OnUpdate", useElapsedTime and Icon_OnUpdate_ElapsedTime or Icon_OnUpdate)
+                end
             end
-            frame.duration:Show()
-        end
+        else
+            frame.border:Hide()
+            frame.cooldown:Show()
+            frame.cooldown:SetSwipeColor(r, g, b)
+            frame.cooldown:_SetCooldown(start, duration)
 
-        if frame.showDuration then
-            frame._start = start
-            frame._duration = duration
-            frame._elapsed = 0.1 -- update immediately
-            frame:SetScript("OnUpdate", useElapsedTime and Icon_OnUpdate_ElapsedTime or Icon_OnUpdate)
+            frame:SetScript("OnUpdate", nil)
+            frame._start = nil
+            frame._duration = nil
+            frame._remain = nil
+            frame._elapsed = nil
+            frame._threshold = nil
+            frame._elapsedTime = nil
+
+            if Cell.isMidnight and frame.cooldown.SetHideCountdownNumbers then
+                frame.duration:Hide()
+                BorderIcon_SetCountdownVisibility(frame, frame.showDuration)
+                if frame.showDuration then
+                    ApplyCountdownFont(frame, frame._durationFont)
+                    frame._countdownFontApplied = true
+                end
+            else
+                if not frame.showDuration then
+                    frame.duration:Hide()
+                else
+                    if frame.showDuration == true then
+                        frame._threshold = duration
+                    elseif frame.showDuration >= 1 then
+                        frame._threshold = frame.showDuration
+                    else -- < 1
+                        frame._threshold = frame.showDuration * duration
+                    end
+                    frame.duration:Show()
+                    frame._start = start
+                    frame._duration = duration
+                    frame._elapsed = 0.1 -- update immediately
+                    frame:SetScript("OnUpdate", useElapsedTime and Icon_OnUpdate_ElapsedTime or Icon_OnUpdate)
+                end
+            end
         end
     end
 
@@ -636,11 +914,15 @@ end
 
 local function BorderIcon_ShowDuration(frame, show)
     frame.showDuration = show
-    if Cell.isMidnight and frame.cooldown and frame.cooldown.SetHideCountdownNumbers then
+    if Cell.isMidnight then
         -- Midnight: Cell's duration text is always hidden (produces invisible output
         -- with secrets). Only toggle Blizzard's built-in countdown.
         frame.duration:Hide()
-        frame.cooldown:SetHideCountdownNumbers(not show)
+        BorderIcon_SetCountdownVisibility(frame, show)
+        if show then
+            ApplyCountdownFont(frame, frame._durationFont)
+            frame._countdownFontApplied = true
+        end
     else
         -- Pre-Midnight: use Cell's own duration text
         if show then
@@ -657,6 +939,15 @@ local function BorderIcon_UpdatePixelPerfect(frame)
     P.Repoint(frame.iconFrame)
     P.Repoint(frame.stack)
     P.Repoint(frame.duration)
+    if frame.cooldown then
+        P.Repoint(frame.cooldown)
+        if frame.cooldown.spark then
+            P.Resize(frame.cooldown.spark)
+        end
+    end
+    if frame._countdownCooldown then
+        P.Repoint(frame._countdownCooldown)
+    end
 end
 
 function I.CreateAura_BorderIcon(name, parent, borderSize)
@@ -671,27 +962,11 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     border:SetAllPoints(frame)
     border:Hide()
 
-    local cooldown = CreateFrame("Cooldown", name.."Cooldown", frame)
-    frame.cooldown = cooldown
-    cooldown:SetAllPoints(frame)
-    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-    cooldown:SetSwipeColor(1, 1, 1)
-    cooldown:SetHideCountdownNumbers(true)
-    -- Midnight: set abbreviation threshold once at creation (shows "1m" above 60s)
-    if Cell.isMidnight and cooldown.SetCountdownAbbrevThreshold then
-        cooldown:SetCountdownAbbrevThreshold(60)
-    end
-    -- disable omnicc
-    cooldown.noCooldownCount = true
-    -- prevent some addons from adding cooldown text
-    cooldown._SetCooldown = cooldown.SetCooldown
-    cooldown.SetCooldown = nil
-
     local iconFrame = CreateFrame("Frame", name.."IconFrame", frame)
     frame.iconFrame = iconFrame
     P.Point(iconFrame, "TOPLEFT", frame, "TOPLEFT", borderSize, -borderSize)
     P.Point(iconFrame, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
-    iconFrame:SetFrameLevel(cooldown:GetFrameLevel()+1)
+    iconFrame:SetFrameLevel(frame:GetFrameLevel() + 1)
 
     local icon = iconFrame:CreateTexture(name.."Icon", "ARTWORK")
     frame.icon = icon
@@ -719,12 +994,15 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     frame.SetCooldown = BorderIcon_SetCooldown
     frame.SetCooldownFromAura = BorderIcon_SetCooldownFromAura
     frame.ShowDuration = BorderIcon_ShowDuration
+    frame.SetCooldownStyle = BorderIcon_SetCooldownStyle
     -- BarIcon-compatible methods (no-ops for BorderIcon, needed when used as
     -- cooldown indicator child frames which call these on all children)
     frame.ShowAnimation = function() end
     frame.ShowStack = function() end
     frame.SetupGlow = function() end
     frame.UpdatePixelPerfect = BorderIcon_UpdatePixelPerfect
+
+    BorderIcon_SetCooldownStyle(frame, Cell.isMidnight and CELL_COOLDOWN_STYLE or "CLOCK")
 
     return frame
 end
@@ -799,6 +1077,12 @@ local function BarIcon_ShowAnimation(frame, show)
     end
 end
 
+local function BarIcon_SetCooldownStyle(frame, style)
+    Shared_SetCooldownStyle(frame, style)
+    ReCalcTexCoord(frame, frame:GetSize())
+    frame:UpdatePixelPerfect()
+end
+
 local function BarIcon_UpdatePixelPerfect(frame)
     P.Resize(frame)
     P.Repoint(frame)
@@ -847,6 +1131,7 @@ function I.CreateAura_BarIcon(name, parent)
     frame.ShowDuration = Shared_ShowDuration
     frame.ShowStack = Shared_ShowStack
     frame.ShowAnimation = BarIcon_ShowAnimation
+    frame.SetCooldownStyle = BarIcon_SetCooldownStyle
     frame.SetupGlow = Shared_SetupGlow
     frame.UpdatePixelPerfect = BarIcon_UpdatePixelPerfect
 
@@ -1058,6 +1343,14 @@ local function Icons_ShowAnimation(icons, show)
     end
 end
 
+local function Icons_SetCooldownStyle(icons, style)
+    for i = 1, icons.maxNum do
+        if icons[i].SetCooldownStyle then
+            icons[i]:SetCooldownStyle(style)
+        end
+    end
+end
+
 local function Icons_UpdatePixelPerfect(icons)
     P.Repoint(icons)
     P.Resize(icons)
@@ -1088,6 +1381,7 @@ function I.CreateAura_Icons(name, parent, num)
     icons.ShowDuration = Icons_ShowDuration
     icons.ShowStack = Icons_ShowStack
     icons.ShowAnimation = Icons_ShowAnimation
+    icons.SetCooldownStyle = Icons_SetCooldownStyle
     icons.SetupGlow = I.Glow_SetupForChildren
     icons.UpdatePixelPerfect = Icons_UpdatePixelPerfect
 
@@ -2335,6 +2629,11 @@ local function Block_UpdatePixelPerfect(frame)
     end
 end
 
+local function Block_SetCooldownStyle(frame, style)
+    Shared_SetCooldownStyle(frame, style, true)
+    frame:UpdatePixelPerfect()
+end
+
 function I.CreateAura_Block(name, parent)
     local frame = CreateFrame("Frame", name, parent, "BackdropTemplate")
     frame:Hide()
@@ -2352,6 +2651,7 @@ function I.CreateAura_Block(name, parent)
     frame.ShowStack = Shared_ShowStack
     frame.ShowDuration = Shared_ShowDuration
     frame.SetCooldown = Block_SetCooldown_Duration
+    frame.SetCooldownStyle = Block_SetCooldownStyle
     frame.SetupGlow = Shared_SetupGlow
     frame.UpdatePixelPerfect = Block_UpdatePixelPerfect
 
@@ -2439,6 +2739,14 @@ local function Blocks_SetCooldown(frame, start, duration, debuffType, texture, c
     end
 end
 
+local function Blocks_SetCooldownStyle(blocks, style)
+    for i = 1, blocks.maxNum do
+        if blocks[i].SetCooldownStyle then
+            blocks[i]:SetCooldownStyle(style)
+        end
+    end
+end
+
 function I.CreateAura_Blocks(name, parent, num)
     local blocks = CreateFrame("Frame", name, parent)
     blocks:Hide()
@@ -2458,6 +2766,7 @@ function I.CreateAura_Blocks(name, parent, num)
     blocks.SetNumPerLine = Icons_SetNumPerLine
     blocks.ShowDuration = Icons_ShowDuration
     blocks.ShowStack = Icons_ShowStack
+    blocks.SetCooldownStyle = Blocks_SetCooldownStyle
     blocks.SetupGlow = I.Glow_SetupForChildren
     blocks.UpdatePixelPerfect = Icons_UpdatePixelPerfect
 

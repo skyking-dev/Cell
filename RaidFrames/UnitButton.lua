@@ -4757,9 +4757,10 @@ function B.SetOrientation(button, orientation, rotateTexture)
         F.RotateTexture(overShieldGlow, 0)
 
         -- update overShieldGlowR
+        local reverseShieldAnchor = Cell.isMidnight and shieldBarR:GetStatusBarTexture() or shieldBarR
         P.ClearPoints(overShieldGlowR)
-        P.Point(overShieldGlowR, "TOP", shieldBarR, "TOPLEFT", 0, 0)
-        P.Point(overShieldGlowR, "BOTTOM", shieldBarR, "BOTTOMLEFT", 0, 0)
+        P.Point(overShieldGlowR, "TOP", reverseShieldAnchor, "TOPLEFT", 0, 0)
+        P.Point(overShieldGlowR, "BOTTOM", reverseShieldAnchor, "BOTTOMLEFT", 0, 0)
         P.Width(overShieldGlowR, 8)
         F.RotateTexture(overShieldGlowR, 0)
 
@@ -4848,9 +4849,10 @@ function B.SetOrientation(button, orientation, rotateTexture)
         F.RotateTexture(overShieldGlow, 90)
 
         -- update overShieldGlowR
+        local reverseShieldAnchor = Cell.isMidnight and shieldBarR:GetStatusBarTexture() or shieldBarR
         P.ClearPoints(overShieldGlowR)
-        P.Point(overShieldGlowR, "LEFT", shieldBarR, "BOTTOMLEFT", 0, 0)
-        P.Point(overShieldGlowR, "RIGHT", shieldBarR, "BOTTOMRIGHT", 0, 0)
+        P.Point(overShieldGlowR, "LEFT", reverseShieldAnchor, "BOTTOMLEFT", 0, 0)
+        P.Point(overShieldGlowR, "RIGHT", reverseShieldAnchor, "BOTTOMRIGHT", 0, 0)
         P.Height(overShieldGlowR, 8)
         F.RotateTexture(overShieldGlowR, 90)
 

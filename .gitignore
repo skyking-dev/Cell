@@ -4,6 +4,7 @@
 .resources/
 .utils/*.csv
 Libs/*
+*.Zone.Identifier
 
 # excluded
 !.release/*.sh

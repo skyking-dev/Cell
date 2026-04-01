@@ -126,6 +126,34 @@ local function UpdatePreviewButton()
 end
 
 -- indicator preview onupdate
+local function ApplyMidnightBorderIconPreview(indicator, debuffType)
+    if indicator.duration then
+        indicator.duration:Hide()
+    end
+
+    local countdown = indicator._countdownCooldown or indicator.cooldown
+    if countdown and countdown.SetHideCountdownNumbers and indicator.showDuration then
+        countdown:SetHideCountdownNumbers(false)
+    end
+
+    if indicator.cooldown and indicator.cooldown.SetSwipeColor then
+        indicator.cooldown:SetSwipeColor(0, 0, 0)
+    end
+
+    if indicator.border then
+        local r, g, b
+        if debuffType ~= nil then
+            r, g, b = I.GetDebuffTypeColor(debuffType)
+        elseif indicator._isPreviewPlayerCast then
+            r, g, b = 0, 0.8, 0
+        else
+            r, g, b = 1, 0.85, 0
+        end
+        indicator.border:SetColorTexture(r, g, b)
+        indicator.border:Show()
+    end
+end
+
 local function SetOnUpdate(indicator, type, icon, stack, extra)
     indicator.preview = indicator.preview or CreateFrame("Frame", nil, indicator)
     -- Midnight BorderIcon preview: use reversed swipe so the colored border
@@ -137,34 +165,17 @@ local function SetOnUpdate(indicator, type, icon, stack, extra)
             -- Buff cooldowns (no debuff type): green = player cast, yellow = others
             indicator.icon:SetTexture(icon)
             indicator.stack:SetText(stack and stack > 1 and stack or "")
-            if indicator.border then
-                if indicator._isPreviewPlayerCast then
-                    indicator.border:SetColorTexture(0, 0.8, 0)
-                else
-                    indicator.border:SetColorTexture(1, 0.85, 0)
-                end
-                indicator.border:Show()
-            end
             if indicator.cooldown then
                 indicator.cooldown:SetReverse(true)
-                indicator.cooldown:SetSwipeColor(0, 0, 0)
-                if indicator.showDuration then
-                    indicator.cooldown:SetHideCountdownNumbers(false)
-                end
                 indicator.cooldown:_SetCooldown(GetTime(), 13)
                 indicator.cooldown:Show()
             end
+            ApplyMidnightBorderIconPreview(indicator)
             indicator:Show()
         else
             indicator:SetCooldown(GetTime(), 13, type, icon, stack or 0, false, extra)
             if isMidnightBorderIcon then
-                -- Hide Cell's duration text; Blizzard's centered countdown replaces it
-                if indicator.duration then
-                    indicator.duration:Hide()
-                end
-                if indicator.cooldown and indicator.showDuration then
-                    indicator.cooldown:SetHideCountdownNumbers(false)
-                end
+                ApplyMidnightBorderIconPreview(indicator, type)
             end
         end
     end
@@ -468,18 +479,12 @@ local function InitIndicator(indicatorName)
             indicator[i]:HookScript("OnShow", function()
                 indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
                 if isMidnightBorderIcon then
-                    if indicator[i].duration then indicator[i].duration:Hide() end
-                    if indicator[i].cooldown and indicator[i].showDuration then
-                        indicator[i].cooldown:SetHideCountdownNumbers(false)
-                    end
+                    ApplyMidnightBorderIconPreview(indicator[i], types[i])
                 end
                 indicator[i].cooldown:SetScript("OnCooldownDone", function()
                     indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
                     if isMidnightBorderIcon then
-                        if indicator[i].duration then indicator[i].duration:Hide() end
-                        if indicator[i].cooldown and indicator[i].showDuration then
-                            indicator[i].cooldown:SetHideCountdownNumbers(false)
-                        end
+                        ApplyMidnightBorderIconPreview(indicator[i], types[i])
                     end
                 end)
             end)
@@ -551,11 +556,19 @@ local function InitIndicator(indicatorName)
             {"Magic", "Interface\\Icons\\spell_shadow_psychicscream"},
             {"", "Interface\\Icons\\spell_nature_earthbind"},
         }
+        local isMidnightBorderIcon = Cell.isMidnight and indicator[1] and indicator[1].cooldown
+            and indicator[1].cooldown._SetCooldown and not indicator[1].cooldown.SetMinMaxValues
         for i = 1, 3 do
             indicator[i]:HookScript("OnShow", function()
                 indicator[i]:SetCooldown(GetTime(), 13, spells[i][1], spells[i][2], 7)
+                if isMidnightBorderIcon then
+                    ApplyMidnightBorderIconPreview(indicator[i], spells[i][1])
+                end
                 indicator[i].cooldown:SetScript("OnCooldownDone", function()
                     indicator[i]:SetCooldown(GetTime(), 13, spells[i][1], spells[i][2], 7)
+                    if isMidnightBorderIcon then
+                        ApplyMidnightBorderIconPreview(indicator[i], spells[i][1])
+                    end
                 end)
             end)
             indicator[i]:HookScript("OnHide", function()
@@ -2419,7 +2432,23 @@ local function UpdateLayout()
 end
 Cell.RegisterCallback("UpdateLayout", "IndicatorsTab_UpdateLayout", UpdateLayout)
 
-local function UpdateAppearance()
+local function UpdatePreviewCooldownStyle(style)
+    if not previewButton or not previewButton.indicators then return end
+
+    for _, indicator in pairs(previewButton.indicators) do
+        if indicator and indicator.SetCooldownStyle then
+            indicator:SetCooldownStyle(style)
+        end
+    end
+end
+
+local function UpdateAppearance(which)
+    if which == "cooldownStyle" or which == "reset" then
+        local style = CellDB["appearance"] and CellDB["appearance"]["cooldownStyle"]
+        style = style == "CLOCK" and "CLOCK" or "VERTICAL"
+        UpdatePreviewCooldownStyle(style)
+    end
+
     if previewButton and currentLayout == Cell.vars.currentLayout then
         UpdatePreviewButton()
     end

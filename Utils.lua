@@ -571,8 +571,13 @@ function F.Copy(t)
 end
 
 function F.TContains(t, v)
+    if not t then return false end
+    if F.IsValueNonSecret and not F.IsValueNonSecret(v) then return false end
+
     for _, value in pairs(t) do
-        if value == v then return true end
+        if (not F.IsValueNonSecret or F.IsValueNonSecret(value)) and value == v then
+            return true
+        end
     end
     return false
 end
@@ -1504,7 +1509,7 @@ function F.IsFriend(unitFlags)
 end
 
 function F.IsPlayer(guid)
-    if guid then
+    if guid and F.IsValueNonSecret(guid) then
         return string.find(guid, "^Player")
     end
 end
@@ -1513,19 +1518,19 @@ function F.IsPet(guid, unit)
     if unit then
         return strfind(unit, "pet%d*$")
     end
-    if guid then
+    if guid and F.IsValueNonSecret(guid) then
         return string.find(guid, "^Pet")
     end
 end
 
 function F.IsNPC(guid)
-    if guid then
+    if guid and F.IsValueNonSecret(guid) then
         return string.find(guid, "^Creature")
     end
 end
 
 function F.IsVehicle(guid)
-    if guid then
+    if guid and F.IsValueNonSecret(guid) then
         return string.find(guid, "^Vehicle")
     end
 end
