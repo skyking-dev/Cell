@@ -988,6 +988,46 @@ end
 -------------------------------------------------
 -- private auras
 -------------------------------------------------
+local PRIVATE_AURAS_MAX = 5
+
+local function PrivateAuras_GetMaxAuras(self, options)
+    local maxAuras = options and options[3] or self.maxAuras or 1
+    maxAuras = tonumber(maxAuras) or 1
+    maxAuras = math.floor(maxAuras + 0.5)
+
+    if maxAuras < 1 then
+        maxAuras = 1
+    elseif maxAuras > PRIVATE_AURAS_MAX then
+        maxAuras = PRIVATE_AURAS_MAX
+    end
+
+    return maxAuras
+end
+
+local function PrivateAuras_RemoveAllAnchors(self)
+    if not (C_UnitAuras and C_UnitAuras.RemovePrivateAuraAnchor) then return end
+
+    for i = 1, #self do
+        local holder = self[i]
+        if holder.auraAnchorID then
+            C_UnitAuras.RemovePrivateAuraAnchor(holder.auraAnchorID)
+            holder.auraAnchorID = nil
+        end
+    end
+end
+
+local function PrivateAuras_UpdateHolderVisibility(self, maxAuras)
+    for i = 1, #self do
+        if i <= maxAuras then
+            self[i]:Show()
+        else
+            self[i]:Hide()
+        end
+    end
+
+    self:UpdateSize(maxAuras)
+end
+
 local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
     -- 12.0.1+: AddPrivateAuraAnchor/RemovePrivateAuraAnchor cannot be called in combat.
     -- Defer until combat ends if needed.
@@ -1007,46 +1047,47 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
         return
     end
 
-    -- remove old
-    if self.auraAnchorID then
-        C_UnitAuras.RemovePrivateAuraAnchor(self.auraAnchorID)
-        self.unit = nil
-        self.auraAnchorID = nil
-    end
+    local maxAuras = PrivateAuras_GetMaxAuras(self)
+    PrivateAuras_RemoveAllAnchors(self)
+    self.unit = unit
+
+    PrivateAuras_UpdateHolderVisibility(self, maxAuras)
 
     -- add new
-    if unit then
+    if unit and C_UnitAuras and C_UnitAuras.AddPrivateAuraAnchor then
         local _showCountdownFrame, _showCountdownNumbers = true, false
         if type(self.showCountdownFrame) == "boolean" then _showCountdownFrame = self.showCountdownFrame end
         if type(self.showCountdownNumbers) == "boolean" then _showCountdownNumbers = self.showCountdownNumbers end
 
-        self.unit = unit
-        self.auraAnchorID = C_UnitAuras.AddPrivateAuraAnchor({
-            unitToken = unit,
-            auraIndex = 1,
-            parent = self,
-            showCountdownFrame = _showCountdownFrame,
-            showCountdownNumbers = _showCountdownNumbers,
-            iconInfo = {
-                iconWidth = self:GetWidth(),
-                iconHeight = self:GetHeight(),
-                borderScale = self:GetWidth() / 16,
-                iconAnchor = {
-                    point = "CENTER",
-                    relativeTo = self,
-                    relativePoint = "CENTER",
-                    offsetX = 0,
-                    offsetY = 0,
+        for i = 1, maxAuras do
+            local holder = self[i]
+            holder.auraAnchorID = C_UnitAuras.AddPrivateAuraAnchor({
+                unitToken = unit,
+                auraIndex = i,
+                parent = holder,
+                showCountdownFrame = _showCountdownFrame,
+                showCountdownNumbers = _showCountdownNumbers,
+                iconInfo = {
+                    iconWidth = holder:GetWidth(),
+                    iconHeight = holder:GetHeight(),
+                    borderScale = holder:GetWidth() / 16,
+                    iconAnchor = {
+                        point = "CENTER",
+                        relativeTo = holder,
+                        relativePoint = "CENTER",
+                        offsetX = 0,
+                        offsetY = 0,
+                    },
                 },
-            },
-            -- durationAnchor = {
-            --     point = "BOTTOMRIGHT",
-            --     relativeTo = self,
-            --     relativePoint = "BOTTOMRIGHT",
-            --     offsetX = 0,
-            --     offsetY = 0,
-            -- },
-        })
+                -- durationAnchor = {
+                --     point = "BOTTOMRIGHT",
+                --     relativeTo = holder,
+                --     relativePoint = "BOTTOMRIGHT",
+                --     offsetX = 0,
+                --     offsetY = 0,
+                -- },
+            })
+        end
     end
 end
 
@@ -1057,15 +1098,41 @@ function I.CreatePrivateAuras(parent)
 
     privateAuras.UpdatePrivateAuraAnchor = PrivateAuras_UpdatePrivateAuraAnchor
     privateAuras._SetSize = privateAuras.SetSize
+    privateAuras.UpdateSize = I.Cooldowns_UpdateSize_WithSpacing
+    privateAuras.SetOrientation = I.Cooldowns_SetOrientation_WithSpacing
+    privateAuras.maxAuras = 1
+
+    for i = 1, PRIVATE_AURAS_MAX do
+        local holder = CreateFrame("Frame", nil, privateAuras)
+        tinsert(privateAuras, holder)
+    end
+
+    privateAuras:SetOrientation("left-to-right")
 
     function privateAuras:SetSize(width, height)
-        privateAuras:_SetSize(width, height)
+        privateAuras.width = width
+        privateAuras.height = height
+        for i = 1, #privateAuras do
+            privateAuras[i]:SetSize(width, height)
+        end
+        PrivateAuras_UpdateHolderVisibility(privateAuras, PrivateAuras_GetMaxAuras(privateAuras))
         privateAuras:UpdatePrivateAuraAnchor(privateAuras.unit)
     end
 
     function privateAuras:UpdateOptions(t)
         self.showCountdownFrame = t[1]
         self.showCountdownNumbers = t[2]
+        self.maxAuras = PrivateAuras_GetMaxAuras(self, t)
+
+        for i = 1, #self do
+            local holder = self[i]
+            if holder.cooldown then
+                holder.cooldown:SetDrawSwipe(self.showCountdownFrame)
+                holder.cooldown:SetHideCountdownNumbers(not (self.showCountdownFrame and self.showCountdownNumbers))
+            end
+        end
+
+        PrivateAuras_UpdateHolderVisibility(self, self.maxAuras)
         privateAuras:UpdatePrivateAuraAnchor(privateAuras.unit)
     end
 end

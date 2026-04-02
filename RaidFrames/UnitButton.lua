@@ -1354,6 +1354,21 @@ local function ResetDebuffVars(self)
     self.states.BGOrb = nil -- TODO: move to _debuffs
 end
 
+local function CanPlayerDispelAura(unit, auraInfo, debuffType)
+    if Cell.isMidnight and _IsAuraFilteredOut and unit and auraInfo and auraInfo.auraInstanceID then
+        local isFiltered = _IsAuraFilteredOut(unit, auraInfo.auraInstanceID, "HARMFUL|RAID_PLAYER_DISPELLABLE")
+        if F.IsValueNonSecret(isFiltered) then
+            return not isFiltered
+        end
+    end
+
+    if auraInfo and auraInfo._hasSecrets then
+        return not (auraInfo.dispelName == nil)
+    end
+
+    return I.CanDispel(debuffType)
+end
+
 
 local function HandleDebuff(self, auraInfo)
     local auraInstanceID = auraInfo.auraInstanceID
@@ -1371,12 +1386,7 @@ local function HandleDebuff(self, auraInfo)
     local debuffType
     if auraInfo._hasSecrets then
         -- Secret aura: can't read dispelName as a Lua string for type matching.
-        -- Track auraInstanceID for curve-based dispel display in UpdateDebuffs.
         debuffType = ""
-        if isDispellable and unit then
-            self._dispelAuraID = auraInstanceID
-            self._dispelUnit = unit
-        end
     else
         debuffType = auraInfo.dispelName or ""
     end
@@ -1421,16 +1431,21 @@ local function HandleDebuff(self, auraInfo)
             isDispelBlacklisted = Cell.vars.dispelBlacklist[spellId] or false
         end
 
+        local canPlayerDispelAura
+        local function GetCanPlayerDispelAura()
+            if canPlayerDispelAura == nil then
+                canPlayerDispelAura = CanPlayerDispelAura(unit, auraInfo, debuffType) and true or false
+            end
+            return canPlayerDispelAura
+        end
+
         if enabledIndicators["debuffs"] and not isBlacklisted then
             -- all debuffs / only dispellableByMe
-            local canDispel = not indicatorBooleans["debuffs"] or I.CanDispel(debuffType)
-            -- 12.0+: when dispelName is secret, use server-side filter
-            if not canDispel and isDispellable and auraInfo._hasSecrets
-                and _IsAuraFilteredOut and unit then
-                canDispel = not _IsAuraFilteredOut(unit,
-                    auraInstanceID, "HARMFUL|RAID_PLAYER_DISPELLABLE")
+            local canShowDebuff = not indicatorBooleans["debuffs"]
+            if not canShowDebuff then
+                canShowDebuff = GetCanPlayerDispelAura()
             end
-            if canDispel then
+            if canShowDebuff then
                 if isBig then
                     self._debuffs_big[auraInstanceID] = true
                 else
@@ -1473,9 +1488,14 @@ local function HandleDebuff(self, auraInfo)
             end
         end
 
-        if enabledIndicators["dispels"] and debuffType and debuffType ~= "" then
+        if enabledIndicators["dispels"] then
             -- all dispels / only dispellableByMe
-            if not indicatorBooleans["dispels"]["dispellableByMe"] or I.CanDispel(debuffType) then
+            local canShowDispel = not indicatorBooleans["dispels"]["dispellableByMe"]
+            if not canShowDispel then
+                canShowDispel = GetCanPlayerDispelAura()
+            end
+
+            if canShowDispel and debuffType and debuffType ~= "" then
                 if indicatorBooleans["dispels"][debuffType] then
                     if isDispelBlacklisted then
                         self._debuffs_dispel[debuffType] = false
@@ -1483,6 +1503,11 @@ local function HandleDebuff(self, auraInfo)
                         self._debuffs_dispel[debuffType] = true
                     end
                 end
+            elseif canShowDispel and auraInfo._hasSecrets and isDispellable and unit then
+                -- Secret dispels have no Lua-readable type, so keep one aura around for
+                -- the curve-based fallback in UpdateDebuffs.
+                self._dispelAuraID = auraInstanceID
+                self._dispelUnit = unit
             end
         end
 
@@ -5003,9 +5028,7 @@ function B.UpdateAnimation(button)
     if Cell.isMidnight then
         -- Midnight: smooth animation handled via StatusBarInterpolation enum in SetValue().
         -- Never use SetSmoothedValue mixin (does Lua Clamp arithmetic, crashes on secrets).
-        button.widgets.healthBar:ResetSmoothedValue()
         button.widgets.healthBar.SetBarValue = button.widgets.healthBar.SetValue
-        button.widgets.powerBar:ResetSmoothedValue()
         button.widgets.powerBar.SetBarValue = button.widgets.powerBar.SetValue
     elseif barAnimationType == "Smooth" then
         button.widgets.healthBar.SetBarValue = button.widgets.healthBar.SetSmoothedValue

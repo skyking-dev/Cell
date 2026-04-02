@@ -1,3 +1,11 @@
+# r275.6 Midnight dispel filtering and private aura options
+
+## Indicators
+- Dispels now use Midnight's per-aura server-side dispel filter so raid frames only flag debuffs you can actually remove on that specific unit.
+- Secret dispellable auras now feed the same decision path as visible dispels, improving self-only and restricted dispel handling.
+- Private Auras can now anchor and display more than one Blizzard private aura at a time.
+- Added a new Private Aura option to control the maximum number of displayed private aura anchors while preserving Blizzard styling restrictions.
+
 # r275.5 Added Midnight Raid Debuffs
 
 ## Raid Debuffs

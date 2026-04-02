@@ -497,39 +497,43 @@ local function InitIndicator(indicatorName)
     elseif indicatorName == "privateAuras" then
         indicator.isPrivateAuras = true
 
-        indicator.mask = indicator:CreateMaskTexture()
-        indicator.mask:SetTexture("interface/framegeneral/uiframeiconmask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        indicator.mask:SetAllPoints(indicator)
+        for i = 1, #indicator do
+            local holder = indicator[i]
 
-        indicator.icon = indicator:CreateTexture(nil, "ARTWORK")
-        indicator.icon:SetAllPoints(indicator)
-        indicator.icon:SetTexture(237555)
-        indicator.icon:AddMaskTexture(indicator.mask)
+            holder.mask = holder:CreateMaskTexture()
+            holder.mask:SetTexture("interface/framegeneral/uiframeiconmask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            holder.mask:SetAllPoints(holder)
 
-        indicator.border = indicator:CreateTexture(nil, "BORDER")
-        indicator.border:SetPoint("TOPLEFT", indicator.icon, -1, 0)
-        indicator.border:SetPoint("BOTTOMRIGHT", indicator.icon, 1, 0)
-        indicator.border:SetTexture([[Interface\Buttons\UI-Debuff-Overlays]])
-        indicator.border:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
-        indicator.border:SetVertexColor(0.8, 0, 0)
+            holder.icon = holder:CreateTexture(nil, "ARTWORK")
+            holder.icon:SetAllPoints(holder)
+            holder.icon:SetTexture(237555)
+            holder.icon:AddMaskTexture(holder.mask)
 
-        indicator.cooldown = CreateFrame("Cooldown", nil, indicator, "CooldownFrameTemplate")
-        indicator.cooldown:SetAllPoints(indicator)
-        indicator.cooldown:SetReverse(true)
-        indicator.cooldown:SetDrawEdge(false)
-        indicator.cooldown:SetDrawBling(false)
+            holder.border = holder:CreateTexture(nil, "BORDER")
+            holder.border:SetPoint("TOPLEFT", holder.icon, -1, 0)
+            holder.border:SetPoint("BOTTOMRIGHT", holder.icon, 1, 0)
+            holder.border:SetTexture([[Interface\Buttons\UI-Debuff-Overlays]])
+            holder.border:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
+            holder.border:SetVertexColor(0.8, 0, 0)
 
-        local timer
-        indicator:HookScript("OnShow", function()
-            if timer then timer:Cancel() end
-            indicator.cooldown:SetCooldown(GetTime(), 15)
-            timer = C_Timer.NewTicker(15, function()
-                indicator.cooldown:SetCooldown(GetTime(), 15)
+            holder.cooldown = CreateFrame("Cooldown", nil, holder, "CooldownFrameTemplate")
+            holder.cooldown:SetAllPoints(holder)
+            holder.cooldown:SetReverse(true)
+            holder.cooldown:SetDrawEdge(false)
+            holder.cooldown:SetDrawBling(false)
+
+            local timer
+            holder:HookScript("OnShow", function()
+                if timer then timer:Cancel() end
+                holder.cooldown:SetCooldown(GetTime(), 15)
+                timer = C_Timer.NewTicker(15, function()
+                    holder.cooldown:SetCooldown(GetTime(), 15)
+                end)
             end)
-        end)
-        indicator:HookScript("OnHide", function()
-            if timer then timer:Cancel() end
-        end)
+            holder:HookScript("OnHide", function()
+                if timer then timer:Cancel() end
+            end)
+        end
 
     elseif indicatorName == "targetedSpells" then
         indicator.isTargetedSpells = true
@@ -835,8 +839,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end
                 -- privateAuraOptions
                 if t["privateAuraOptions"] then
-                    indicator.cooldown:SetDrawSwipe(t["privateAuraOptions"][1])
-                    indicator.cooldown:SetHideCountdownNumbers(not (t["privateAuraOptions"][1] and t["privateAuraOptions"][2]))
+                    indicator:UpdateOptions(t["privateAuraOptions"])
                 end
                 -- update glow
                 if t["glowOptions"] then
@@ -1002,8 +1005,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:Show()
             end
         elseif setting == "privateAuraOptions" then
-            indicator.cooldown:SetDrawSwipe(value[1])
-            indicator.cooldown:SetHideCountdownNumbers(not (value[1] and value[2]))
+            indicator:UpdateOptions(value)
         elseif setting == "speed" then
             indicator:SetSpeed(value)
         elseif setting == "shape" then

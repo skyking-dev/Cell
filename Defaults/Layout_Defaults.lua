@@ -471,7 +471,7 @@ Cell.defaults.layout = {
             ["position"] = {"TOP", "button", "TOP", 0, 3},
             ["frameLevel"] = 25,
             ["size"] = {18, 18},
-            ["privateAuraOptions"] = {true, false},
+            ["privateAuraOptions"] = {true, false, 1},
         }, -- 25
         {
             ["name"] = "Targeted Spells",

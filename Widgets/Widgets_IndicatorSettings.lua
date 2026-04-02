@@ -5994,30 +5994,43 @@ local function CreateSetting_PrivateAuraOptions(parent)
     local widget
 
     if not settingWidgets["privateAuraOptions"] then
-        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 55)
+        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 108)
         settingWidgets["privateAuraOptions"] = widget
+        widget.options = {true, false, 1}
 
         widget.cb1 = Cell.CreateCheckButton(widget, L["Show countdown swipe"])
         widget.cb1:SetPoint("TOPLEFT", 5, -8)
         widget.cb2 = Cell.CreateCheckButton(widget, L["Show countdown number"])
         widget.cb2:SetPoint("TOPLEFT", widget.cb1, "BOTTOMLEFT", 0, -7)
+        widget.maxAuras = Cell.CreateSlider(L["Max Displayed"], widget, 1, 5, 110, 1)
+        widget.maxAuras:SetPoint("TOPLEFT", widget.cb2, "BOTTOMLEFT", 0, -18)
 
         -- callback
         function widget:SetFunc(func)
             widget.cb1.onClick = function(checked)
                 widget.cb2:SetEnabled(checked)
-                func({checked, widget.cb2:GetChecked()})
+                widget.options[1] = checked
+                widget.options[2] = widget.cb2:GetChecked()
+                func(widget.options)
             end
             widget.cb2.onClick = function(checked)
-                func({widget.cb1:GetChecked(), checked})
+                widget.options[1] = widget.cb1:GetChecked()
+                widget.options[2] = checked
+                func(widget.options)
+            end
+            widget.maxAuras.afterValueChangedFn = function(value)
+                widget.options[3] = value
+                func(widget.options)
             end
         end
 
         -- show db value
         function widget:SetDBValue(t)
+            widget.options = {t[1], t[2], t[3] or 1}
             widget.cb1:SetChecked(t[1])
             widget.cb2:SetChecked(t[2])
             widget.cb2:SetEnabled(t[1])
+            widget.maxAuras:SetValue(t[3] or 1)
         end
     else
         widget = settingWidgets["privateAuraOptions"]

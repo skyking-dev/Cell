@@ -18,4 +18,14 @@ Libs/*
 !Libs/LoadLibs.xml
 !Libs/LoadLibs_Classic.xml
 !Libs/LibTranslit-1.0
+
+
 .DS_Store
+.codex
+Cell-r*-release-*.zip
+
+# local-only notes
+MIDNIGHT_API_ANALISE.md
+
+# local tooling / references
+skills/
