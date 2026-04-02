@@ -162,13 +162,13 @@ local function CheckSRConditions(spellId, unit, sender)
                     return true
                 else
                     if srReplyCD then -- reply cooldown
-                        SendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
+                        F.TrySendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
                     end
                     return false
                 end
             else -- NOTE: no require free cd
                 if srReplyCD and not isReady then -- reply cd if cd
-                    SendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
+                    F.TrySendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
                 end
                 return true
             end
@@ -254,7 +254,7 @@ function SR:COMBAT_LOG_EVENT_UNFILTERED(_, event, _, sourceGUID, sourceName, sou
             F.Debug("|cffdda15eSR_HIDE [|cffbc6c25CLEU:"..event.."|r]:|r", unit, buffId, Cell.vars.guids[sourceGUID])
             -- cast msg (if castByMe)
             if sourceGUID == Cell.vars.playerGUID and srCastMsg then
-                SendChatMessage(srCastMsg, "WHISPER", nil, GetUnitName(unit, true))
+                F.TrySendChatMessage(srCastMsg, "WHISPER", nil, GetUnitName(unit, true))
             end
             -- clear
             srUnits[unit] = nil

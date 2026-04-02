@@ -23,6 +23,68 @@ Cell.bFuncs = {}
 Cell.uFuncs = {}
 Cell.animations = {}
 
+-- Provide safe accent-color fallbacks before Widgets.lua initializes its
+-- richer helpers. This keeps later files from exploding if a mixed install
+-- loads newer callers before the real widget helpers are available.
+if not Cell.GetAccentColorRGB then
+    local fallbackAccentColor = {0.7, 0.7, 0.7}
+    local fallbackAccentColorString = "|cFFB2B2B2"
+
+    local function ClampColorComponent(value)
+        value = tonumber(value) or 0
+        if value < 0 then return 0 end
+        if value > 1 then return 1 end
+        return value
+    end
+
+    local function UpdateFallbackAccentColorString()
+        fallbackAccentColorString = ("|cFF%02X%02X%02X"):format(
+            floor(ClampColorComponent(fallbackAccentColor[1]) * 255 + 0.5),
+            floor(ClampColorComponent(fallbackAccentColor[2]) * 255 + 0.5),
+            floor(ClampColorComponent(fallbackAccentColor[3]) * 255 + 0.5)
+        )
+    end
+
+    function Cell.OverrideAccentColor(cTable)
+        if type(cTable) ~= "table" then return end
+
+        fallbackAccentColor[1] = ClampColorComponent(cTable[1] or fallbackAccentColor[1])
+        fallbackAccentColor[2] = ClampColorComponent(cTable[2] or fallbackAccentColor[2])
+        fallbackAccentColor[3] = ClampColorComponent(cTable[3] or fallbackAccentColor[3])
+        UpdateFallbackAccentColorString()
+    end
+
+    function Cell.GetAccentColorRGB()
+        return unpack(fallbackAccentColor)
+    end
+
+    function Cell.GetAccentColorTable(alpha)
+        if alpha then
+            return {fallbackAccentColor[1], fallbackAccentColor[2], fallbackAccentColor[3], alpha}
+        end
+
+        return fallbackAccentColor
+    end
+
+    function Cell.GetAccentColorString()
+        return fallbackAccentColorString
+    end
+
+    function Cell.ColorFontStringWithAccentColor(fs)
+        if fs and fs.SetTextColor then
+            fs:SetTextColor(unpack(fallbackAccentColor))
+        end
+    end
+
+    function Cell.WrapTextInAccentColor(text)
+        if WrapTextInColorCode then
+            return WrapTextInColorCode(text, fallbackAccentColorString)
+        end
+
+        return fallbackAccentColorString .. text .. "|r"
+    end
+end
+
 local F = Cell.funcs
 local I = Cell.iFuncs
 local P = Cell.pixelPerfectFuncs

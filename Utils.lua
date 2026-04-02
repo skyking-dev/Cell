@@ -2603,3 +2603,102 @@ function F.IsValueNonSecret(val)
     if not issecretvalue then return true end
     return not issecretvalue(val)
 end
+
+-------------------------------------------------
+-- Midnight communication helpers
+-------------------------------------------------
+local restrictedChatTypes = {
+    PARTY = true,
+    PARTY_LEADER = true,
+    RAID = true,
+    RAID_LEADER = true,
+    RAID_WARNING = true,
+    INSTANCE_CHAT = true,
+    INSTANCE_CHAT_LEADER = true,
+    WHISPER = true,
+    GUILD = true,
+    OFFICER = true,
+    CHANNEL = true,
+}
+
+local restrictedAddonChannels = {
+    PARTY = true,
+    RAID = true,
+    INSTANCE_CHAT = true,
+    WHISPER = true,
+    GUILD = true,
+    OFFICER = true,
+    CHANNEL = true,
+}
+
+function F.IsCommRestricted()
+    if not Cell.isMidnight then return false end
+    if IsEncounterInProgress and IsEncounterInProgress() then return true end
+    if C_MythicPlus and C_MythicPlus.IsRunActive and C_MythicPlus.IsRunActive() then return true end
+    if C_PvP and C_PvP.IsActiveBattlefield and C_PvP.IsActiveBattlefield() then return true end
+    return false
+end
+
+function F.IsSecretContextActive()
+    return F.IsAuraRestricted() or F.IsCooldownRestricted() or F.IsCommRestricted()
+end
+
+function F.GetGroupCommChannel()
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        return "INSTANCE_CHAT"
+    elseif IsInRaid() then
+        return "RAID"
+    elseif IsInGroup() then
+        return "PARTY"
+    end
+end
+
+function F.CanSendChatMessage(chatType)
+    if not chatType then return false end
+    if not Cell.isMidnight then return true end
+    if restrictedChatTypes[chatType] and F.IsCommRestricted() then
+        return false
+    end
+    return true
+end
+
+function F.TrySendChatMessage(msg, chatType, language, target)
+    if not msg or msg == "" or not chatType then return false end
+    msg = tostring(msg)
+    if not F.CanSendChatMessage(chatType) then
+        F.Debug("Cell: Chat suppressed - restricted context ("..tostring(chatType)..")")
+        return false
+    end
+    SendChatMessage(msg, chatType, language, target)
+    return true
+end
+
+function F.CanSendAddonMessage(channel)
+    if not channel then return false end
+    if not Cell.isMidnight then return true end
+    if restrictedAddonChannels[channel] and F.IsCommRestricted() then
+        return false
+    end
+    return true
+end
+
+function F.TrySendAddonMessage(prefix, message, channel, target)
+    if not prefix or not message or not channel then return false end
+    if not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return false end
+    message = tostring(message)
+    if not F.CanSendAddonMessage(channel) then
+        F.Debug("Cell: Addon message suppressed - restricted context ("..tostring(prefix)..")")
+        return false
+    end
+    C_ChatInfo.SendAddonMessage(prefix, message, channel, target)
+    return true
+end
+
+function F.SendRequestAddonMessage(prefix, message, target)
+    local channel = F.GetGroupCommChannel()
+    if not channel then
+        F.Debug("Cell: Addon message suppressed - no group channel ("..tostring(prefix)..")")
+        return false
+    end
+    return F.TrySendAddonMessage(prefix, message, channel, target)
+end

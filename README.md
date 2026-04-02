@@ -23,6 +23,22 @@ Hope you enjoy.
 
 &nbsp;
 
+## Installation
+
+Install Cell from a packaged release asset on GitHub Releases, CurseForge, or Wago.
+
+Do __not__ install the GitHub `Source code (zip)` or `Source code (tar.gz)` archives. Those source archives do not contain the embedded libraries declared in [`.pkgmeta`](./.pkgmeta), such as `LibCustomGlow-1.0`, `LibDeflate`, `LibSerialize`, `LibSharedMedia-3.0`, and others.
+
+If you extract an archive and see repo-only files like `.gitignore`, `.pkgmeta`, `.github`, or `.release`, you almost certainly downloaded a source archive instead of the installable addon package.
+
+Maintainers can validate an extracted package with:
+
+```bash
+./.release/validate_package.sh <path-to-extracted-addon>
+```
+
+&nbsp;
+
 ## Features
 
 - __Layouts:__ auto switch layout by spec/role, supports party, raid, arena, and battleground.

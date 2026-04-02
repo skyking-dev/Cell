@@ -29,23 +29,126 @@ local function Deserialize(encoded)
 end
 
 -----------------------------------------
--- Comm restriction (Midnight 12.0.0+)
--- Addon communications are blocked during active encounters, M+ keys, and PvP matches.
+-- Comm queue and wrappers
 -----------------------------------------
-local function IsCommRestricted()
-    if not Cell.isMidnight then return false end
-    -- Check encounter
-    if IsEncounterInProgress and IsEncounterInProgress() then return true end
-    -- Check M+
-    if C_MythicPlus and C_MythicPlus.IsRunActive and C_MythicPlus.IsRunActive() then return true end
-    -- Check PvP
-    if C_PvP and C_PvP.IsActiveBattlefield and C_PvP.IsActiveBattlefield() then return true end
-    return false
+local commQueue = {}
+local commQueueByKey = {}
+local commFlushTicker
+
+local function StopCommFlushTicker()
+    if commFlushTicker then
+        commFlushTicker:Cancel()
+        commFlushTicker = nil
+    end
 end
 
--- Export for use in other Comm files (e.g. Nicknames.lua)
-function F.IsCommRestricted()
-    return IsCommRestricted()
+local function StartCommFlushTicker()
+    if not Cell.isMidnight or commFlushTicker then return end
+    commFlushTicker = C_Timer.NewTicker(2, function()
+        if #commQueue == 0 then
+            StopCommFlushTicker()
+            return
+        end
+        if not F.IsCommRestricted() then
+            F.FlushCommQueue()
+        end
+    end)
+end
+
+local function BuildCommQueueKey(prefix, message, distribution, target, priority)
+    return table.concat({
+        tostring(prefix or ""),
+        tostring(distribution or ""),
+        tostring(target or ""),
+        tostring(priority or ""),
+        tostring(message or ""),
+    }, "\031")
+end
+
+local function CanSendCommDistribution(distribution, target)
+    if distribution == "INSTANCE_CHAT" then
+        return IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+    elseif distribution == "RAID" then
+        return IsInRaid()
+    elseif distribution == "PARTY" then
+        return IsInGroup()
+    elseif distribution == "GUILD" or distribution == "OFFICER" then
+        return IsInGuild()
+    elseif distribution == "WHISPER" then
+        return target and target ~= ""
+    end
+    return true
+end
+
+local function QueueCommMessage(prefix, message, distribution, target, priority, callbackFn, queueKey)
+    local key = queueKey or BuildCommQueueKey(prefix, message, distribution, target, priority)
+    local queued = commQueueByKey[key]
+    if queued then
+        queued.callbackFn = callbackFn
+    else
+        queued = {
+            key = key,
+            prefix = prefix,
+            message = message,
+            distribution = distribution,
+            target = target,
+            priority = priority,
+            callbackFn = callbackFn,
+        }
+        tinsert(commQueue, queued)
+        commQueueByKey[key] = queued
+    end
+    StartCommFlushTicker()
+    F.Debug("Cell: Comm queued - restricted context ("..tostring(prefix)..")")
+end
+
+function F.FlushCommQueue()
+    if F.IsCommRestricted() then
+        StartCommFlushTicker()
+        return false
+    end
+
+    if #commQueue == 0 then
+        StopCommFlushTicker()
+        return true
+    end
+
+    local pending = commQueue
+    commQueue = {}
+    commQueueByKey = {}
+    StopCommFlushTicker()
+
+    for _, queued in ipairs(pending) do
+        if CanSendCommDistribution(queued.distribution, queued.target) then
+            Comm:SendCommMessage(queued.prefix, queued.message, queued.distribution, queued.target, queued.priority, queued.callbackFn)
+        else
+            F.Debug("Cell: Comm dropped - invalid distribution after queue ("..tostring(queued.prefix)..")")
+        end
+    end
+
+    return true
+end
+
+function F.TrySendCommMessage(prefix, message, distribution, target, priority, callbackFn, options)
+    if not prefix or not message or not distribution then return false end
+
+    options = options or {}
+    if Cell.isMidnight and F.IsCommRestricted() then
+        if options.queue == false then
+            F.Debug("Cell: Comm suppressed - restricted context ("..tostring(prefix)..")")
+            return false
+        end
+        QueueCommMessage(prefix, message, distribution, target, priority, callbackFn, options.queueKey)
+        return false, "queued"
+    end
+
+    if not CanSendCommDistribution(distribution, target) then
+        F.Debug("Cell: Comm suppressed - invalid distribution ("..tostring(prefix)..")")
+        return false
+    end
+
+    Comm:SendCommMessage(prefix, message, distribution, target, priority, callbackFn)
+    return true
 end
 
 -----------------------------------------
@@ -54,20 +157,6 @@ end
 function F.Notify(type, ...)
     if WeakAuras then
         WeakAuras.ScanEvents("CELL_NOTIFY", type, ...)
-    end
-end
-
------------------------------------------
--- shared
------------------------------------------
-local sendChannel
-local function UpdateSendChannel()
-    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        sendChannel = "INSTANCE_CHAT"
-    elseif IsInRaid() then
-        sendChannel = "RAID"
-    else
-        sendChannel = "PARTY"
     end
 end
 
@@ -83,25 +172,17 @@ eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 function eventFrame:GROUP_ROSTER_UPDATE()
     if IsInGroup() then
         eventFrame:UnregisterEvent("GROUP_ROSTER_UPDATE")
-        UpdateSendChannel()
-        -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-        if IsCommRestricted() then
-            F.Debug("Cell: Comm suppressed - restricted context (CELL_VERSION group)")
-            return
+        local sendChannel = F.GetGroupCommChannel()
+        if sendChannel then
+            F.TrySendCommMessage("CELL_VERSION", Cell.version, sendChannel, nil, "NORMAL")
         end
-        Comm:SendCommMessage("CELL_VERSION", Cell.version, sendChannel, nil, "NORMAL")
     end
 end
 
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 function eventFrame:PLAYER_LOGIN()
     if IsInGuild() then
-        -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-        if IsCommRestricted() then
-            F.Debug("Cell: Comm suppressed - restricted context (CELL_VERSION guild)")
-            return
-        end
-        Comm:SendCommMessage("CELL_VERSION", Cell.version, "GUILD", nil, "NORMAL")
+        F.TrySendCommMessage("CELL_VERSION", Cell.version, "GUILD", nil, "NORMAL")
     end
 end
 
@@ -136,26 +217,20 @@ function F.NotifyMarkLock(mark, name, class)
     name = F.GetClassColorStr(class)..name.."|r"
     F.Print(L["%s lock %s on %s."]:format(L["You"], F.GetMarkEscapeSequence(mark), name))
 
-    UpdateSendChannel()
-    -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-    if IsCommRestricted() then
-        F.Debug("Cell: Comm suppressed - restricted context (CELL_MARKS lock)")
-        return
+    local sendChannel = F.GetGroupCommChannel()
+    if sendChannel then
+        F.TrySendCommMessage("CELL_MARKS", Serialize({true, mark, name}), sendChannel, nil, "ALERT")
     end
-    Comm:SendCommMessage("CELL_MARKS", Serialize({true, mark, name}), sendChannel, nil, "ALERT")
 end
 
 function F.NotifyMarkUnlock(mark, name, class)
     name = F.GetClassColorStr(class)..name.."|r"
     F.Print(L["%s unlock %s from %s."]:format(L["You"], F.GetMarkEscapeSequence(mark), name))
 
-    UpdateSendChannel()
-    -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-    if IsCommRestricted() then
-        F.Debug("Cell: Comm suppressed - restricted context (CELL_MARKS unlock)")
-        return
+    local sendChannel = F.GetGroupCommChannel()
+    if sendChannel then
+        F.TrySendCommMessage("CELL_MARKS", Serialize({false, mark, name}), sendChannel, nil, "ALERT")
     end
-    Comm:SendCommMessage("CELL_MARKS", Serialize({false, mark, name}), sendChannel, nil, "ALERT")
 end
 
 -----------------------------------------
@@ -206,13 +281,10 @@ function F.CheckPriority()
     UpdatePriority()
     -- NOTE: needs time to calc myPriority
     C_Timer.After(1, function()
-        UpdateSendChannel()
-        -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-        if IsCommRestricted() then
-            F.Debug("Cell: Comm suppressed - restricted context (CELL_CPRIO chk)")
-            return
+        local sendChannel = F.GetGroupCommChannel()
+        if sendChannel then
+            F.TrySendCommMessage("CELL_CPRIO", "chk", sendChannel, nil, "ALERT")
         end
-        Comm:SendCommMessage("CELL_CPRIO", "chk", sendChannel, nil, "ALERT")
     end)
     -- if t_check then t_check:Cancel() end
     -- t_check = C_Timer.NewTimer(2, function()
@@ -228,13 +300,10 @@ Comm:RegisterComm("CELL_CPRIO", function(prefix, message, channel, sender)
     -- NOTE: wait for check requests
     if t_send then t_send:Cancel() end
     t_send = C_Timer.NewTimer(2, function()
-        UpdateSendChannel()
-        -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-        if IsCommRestricted() then
-            F.Debug("Cell: Comm suppressed - restricted context (CELL_PRIO)")
-            return
+        local sendChannel = F.GetGroupCommChannel()
+        if sendChannel then
+            F.TrySendCommMessage("CELL_PRIO", tostring(myPriority), sendChannel, nil, "ALERT")
         end
-        Comm:SendCommMessage("CELL_PRIO", tostring(myPriority), sendChannel, nil, "ALERT")
     end)
 end)
 
@@ -258,19 +327,14 @@ end)
 -- cross realm send
 -----------------------------------------
 local function CrossRealmSendCommMessage(prefix, message, playerName, priority, callbackFn)
-    -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
-    if IsCommRestricted() then
-        F.Debug("Cell: Comm suppressed - restricted context (CrossRealm:", prefix, ")")
-        return
-    end
     -- NOTE: unit needs to be in your group, or it will always return true
     if UnitIsSameServer(playerName) then
-        Comm:SendCommMessage(prefix, message, "WHISPER", playerName, priority, callbackFn)
+        F.TrySendCommMessage(prefix, message, "WHISPER", playerName, priority, callbackFn)
     else
         if UnitInParty(playerName) then
-            Comm:SendCommMessage(prefix, playerName..":"..message, "PARTY", nil, priority, callbackFn)
+            F.TrySendCommMessage(prefix, playerName..":"..message, "PARTY", nil, priority, callbackFn)
         elseif UnitInRaid(playerName) then
-            Comm:SendCommMessage(prefix, playerName..":"..message, "RAID", nil, priority, callbackFn)
+            F.TrySendCommMessage(prefix, playerName..":"..message, "RAID", nil, priority, callbackFn)
         end
     end
 end

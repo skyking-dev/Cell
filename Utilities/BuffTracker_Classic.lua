@@ -384,17 +384,6 @@ Cell.RegisterCallback("ShowMover", "BuffTracker_ShowMover", ShowMover)
 ---------------------------------------------------------------------
 -- buttons
 ---------------------------------------------------------------------
-local sendChannel
-local function UpdateSendChannel()
-    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        sendChannel = "INSTANCE_CHAT"
-    elseif IsInRaid() then
-        sendChannel = "RAID"
-    else
-        sendChannel = "PARTY"
-    end
-end
-
 local function CreateBuffButton(parent, size, spell1, spell2, icon, index)
     local b = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate,BackdropTemplate")
     if parent then b:SetFrameLevel(parent:GetFrameLevel() + 1) end
@@ -412,8 +401,10 @@ local function CreateBuffButton(parent, size, spell1, spell2, icon, index)
         if button == "RightButton" and (down == GetCVarBool("ActionButtonUseKeyDown")) then
             local msg = F.GetUnaffectedString(index)
             if msg then
-                UpdateSendChannel()
-                SendChatMessage(msg, sendChannel)
+                local sendChannel = F.GetGroupCommChannel()
+                if sendChannel then
+                    F.TrySendChatMessage(msg, sendChannel)
+                end
             end
         end
     end)

@@ -21,9 +21,9 @@ local limit, count
 local function Send(msg)
     if Cell.hasHighestPriority then
         if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-            SendChatMessage(strupper(ACTION_UNIT_DIED)..": "..msg, "INSTANCE_CHAT")
+            F.TrySendChatMessage(strupper(ACTION_UNIT_DIED)..": "..msg, "INSTANCE_CHAT")
         else
-            SendChatMessage(strupper(ACTION_UNIT_DIED)..": "..msg, IsInRaid() and "RAID" or "PARTY")
+            F.TrySendChatMessage(strupper(ACTION_UNIT_DIED)..": "..msg, IsInRaid() and "RAID" or "PARTY")
         end
     end
 end

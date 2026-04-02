@@ -87,7 +87,7 @@ local function Start(sec, sendToChat)
             isPullTickerRunning = false
             pullBtn:SetText(L["Go!"])
             if sendToChat then
-                SendChatMessage(L["Go!"], IsInRaid() and "RAID_WARNING" or "PARTY")
+                F.TrySendChatMessage(L["Go!"], IsInRaid() and "RAID_WARNING" or "PARTY")
             end
         elseif pullBtn.sec == -1 then
             pullBtn:SetText(L["Pull"])
@@ -95,9 +95,9 @@ local function Start(sec, sendToChat)
             pullBtn:SetText(pullBtn.sec)
             if sendToChat then
                 if pullBtn.sec > 3 then
-                    SendChatMessage(pullBtn.sec, IsInRaid() and "RAID" or "PARTY")
+                    F.TrySendChatMessage(pullBtn.sec, IsInRaid() and "RAID" or "PARTY")
                 else
-                    SendChatMessage(pullBtn.sec, IsInRaid() and "RAID_WARNING" or "PARTY")
+                    F.TrySendChatMessage(pullBtn.sec, IsInRaid() and "RAID_WARNING" or "PARTY")
                 end
             end
         end
@@ -339,11 +339,11 @@ local function UpdateTools(which)
                 pullBtn:SetAttribute("type2", nil)
                 pullBtn:SetScript("OnMouseUp", function(self, button)
                     if button == "LeftButton" then
-                        SendChatMessage(L["Pull in %d sec"]:format(CellDB["tools"]["readyAndPull"][3][2]), IsInRaid() and "RAID_WARNING" or "PARTY")
+                        F.TrySendChatMessage(L["Pull in %d sec"]:format(CellDB["tools"]["readyAndPull"][3][2]), IsInRaid() and "RAID_WARNING" or "PARTY")
                         Start(CellDB["tools"]["readyAndPull"][3][2], true)
                     else
                         if isPullTickerRunning then
-                            SendChatMessage(L["Pull timer cancelled"], IsInRaid() and "RAID_WARNING" or "PARTY")
+                            F.TrySendChatMessage(L["Pull timer cancelled"], IsInRaid() and "RAID_WARNING" or "PARTY")
                             Stop()
                         end
                     end
