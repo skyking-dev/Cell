@@ -278,6 +278,34 @@ function eventFrame:ADDON_LOADED(arg1)
         if type(CellDB["snippets"]) ~= "table" then CellDB["snippets"] = {} end
         if not CellDB["snippets"][0] then CellDB["snippets"][0] = F.GetDefaultSnippet() end
 
+        if type(CellDB["midnightTools"]) ~= "table" then
+            CellDB["midnightTools"] = {
+                ["showQueueIndicator"] = true,
+            }
+        end
+        if CellDB["midnightTools"]["showQueueIndicator"] == nil then
+            CellDB["midnightTools"]["showQueueIndicator"] = true
+        end
+        if type(CellDB["systemTools"]) ~= "table" then
+            CellDB["systemTools"] = {
+                ["autoBackupsEnabled"] = true,
+                ["maxAutoBackups"] = 12,
+                ["maxNotifications"] = 40,
+            }
+        end
+        if CellDB["systemTools"]["autoBackupsEnabled"] == nil then
+            CellDB["systemTools"]["autoBackupsEnabled"] = true
+        end
+        if CellDB["systemTools"]["maxAutoBackups"] == nil then
+            CellDB["systemTools"]["maxAutoBackups"] = 12
+        end
+        if CellDB["systemTools"]["maxNotifications"] == nil then
+            CellDB["systemTools"]["maxNotifications"] = 40
+        end
+        if type(CellDB["addonNotifications"]) ~= "table" then
+            CellDB["addonNotifications"] = {}
+        end
+
         Cell.vars.playerClass, Cell.vars.playerClassID = UnitClassBase("player")
 
         -- general --------------------------------------------------------------------------------
@@ -559,6 +587,7 @@ function eventFrame:ADDON_LOADED(arg1)
 
         -- raid debuffs ---------------------------------------------------------------------------
         if type(CellDB["raidDebuffs"]) ~= "table" then CellDB["raidDebuffs"] = {} end
+        if type(CellDB["raidDebuffsCuration"]) ~= "table" then CellDB["raidDebuffsCuration"] = {} end
         -- CellDB["raidDebuffs"] = {
         --     [instanceId] = {
         --         ["general"] = {
@@ -1094,6 +1123,63 @@ function SlashCmdList.CELL(msg, editbox)
             F.Print(L["A 0-40 integer is required."])
         end
 
+    elseif command == "midnight" then
+        if not Cell.isMidnight then
+            F.Print("Midnight tools are only available on Midnight builds.")
+        elseif rest == "print" or rest == "status" then
+            if F.PrintMidnightDiagnostics then
+                F.PrintMidnightDiagnostics()
+            end
+        elseif rest == "refresh" or rest == "versions" then
+            if F.RequestVersionDiagnostics and F.RequestVersionDiagnostics() then
+                F.Print("Midnight sync diagnostics refresh requested.")
+            else
+                F.Print("No group channel is available for Midnight sync diagnostics.")
+            end
+        elseif rest == "flush" then
+            if F.FlushCommQueue and F.FlushCommQueue() then
+                F.Print("Midnight comm queue flushed.")
+            else
+                F.Print("Midnight comm queue is still blocked by restrictions.")
+            end
+        elseif rest == "cvars" or rest == "test" then
+            if F.ShowMidnightTestCVars then
+                F.ShowMidnightTestCVars()
+            end
+        elseif F.ShowMidnightTools then
+            F.ShowMidnightTools()
+        end
+
+    elseif command == "restrictions" then
+        if not Cell.isMidnight then
+            F.Print("Restriction diagnostics are only available on Midnight builds.")
+        elseif F.PrintMidnightDiagnostics then
+            F.PrintMidnightDiagnostics()
+        end
+
+    elseif command == "syncdiag" then
+        if not Cell.isMidnight then
+            F.Print("Sync diagnostics are only available on Midnight builds.")
+        elseif rest == "refresh" then
+            if F.RequestVersionDiagnostics and F.RequestVersionDiagnostics() then
+                F.Print("Midnight sync diagnostics refresh requested.")
+            else
+                F.Print("No group channel is available for Midnight sync diagnostics.")
+            end
+        elseif rest == "flush" then
+            if F.FlushCommQueue and F.FlushCommQueue() then
+                F.Print("Midnight comm queue flushed.")
+            else
+                F.Print("Midnight comm queue is still blocked by restrictions.")
+            end
+        elseif rest == "print" then
+            if F.PrintMidnightDiagnostics then
+                F.PrintMidnightDiagnostics()
+            end
+        elseif F.ShowMidnightTools then
+            F.ShowMidnightTools()
+        end
+
     -- elseif command == "buff" then
     --     rest = tonumber(rest:format("%d"))
     --     if rest and rest > 0 then
@@ -1105,6 +1191,16 @@ function SlashCmdList.CELL(msg, editbox)
     --     end
 
     else
+        local midnightHelp = ""
+        if Cell.isMidnight then
+            midnightHelp = "\n"..
+                "|cFFFFB5C5/cell midnight|r: open Midnight Tools.\n"..
+                "|cFFFFB5C5/cell midnight cvars|r: show Midnight restriction test CVars.\n"..
+                "|cFFFFB5C5/cell syncdiag refresh|r: request version and sync diagnostics.\n"..
+                "|cFFFFB5C5/cell syncdiag flush|r: flush the queued Midnight comm messages.\n"..
+                "|cFFFFB5C5/cell restrictions|r: print the current Midnight restriction state."
+        end
+
         F.Print(L["Available slash commands"]..":\n"..
             "|cFFFFB5C5/cell options|r, |cFFFFB5C5/cell opt|r: "..L["show Cell options frame"]..".\n"..
             "|cFFFFB5C5/cell healers|r: "..L["create a \"Healers\" indicator"]..".\n"..
@@ -1116,7 +1212,8 @@ function SlashCmdList.CELL(msg, editbox)
             "|cFFFFB5C5/cell reset raiddebuffs|r: "..L["reset all Raid Debuffs"]..".\n"..
             "|cFFFFB5C5/cell reset snippets|r: "..L["reset all Code Snippets"]..".\n"..
             "|cFFFFB5C5/cell reset quickassist|r: "..L["reset Quick Assist for current spec"]..".\n"..
-            "|cFFFFB5C5/cell reset all|r: "..L["reset all Cell settings"].."."
+            "|cFFFFB5C5/cell reset all|r: "..L["reset all Cell settings"].."."..
+            midnightHelp
         )
     end
 end

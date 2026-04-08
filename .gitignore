@@ -4,7 +4,7 @@
 .resources/
 .utils/*.csv
 Libs/*
-*.Zone.Identifier
+
 
 # excluded
 !.release/*.sh
@@ -23,9 +23,6 @@ Libs/*
 .DS_Store
 .codex
 Cell-r*-release-*.zip
-
-# local-only notes
-MIDNIGHT_API_ANALISE.md
 
 # local tooling / references
 skills/

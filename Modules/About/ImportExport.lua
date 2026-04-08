@@ -13,11 +13,15 @@ local isImport, imported, exported = false, nil, ""
 local importExportFrame, importBtn, title, textArea, includeNicknamesCB, includeCharacterCB
 local confirmationFrame
 local ignoredIndices = {}
+local pendingImportBackup, pendingImportBackupState
 
 ---------------------------------------------------------------------
 -- do import
 ---------------------------------------------------------------------
 local function DoImport(noReload)
+    imported["addonNotifications"] = nil
+    imported["systemTools"] = nil
+
     -- raid debuffs
     for instanceID in pairs(imported["raidDebuffs"]) do
         if not Cell.snippetVars.loadedDebuffs[instanceID] then
@@ -164,6 +168,15 @@ local function DoImport(noReload)
         CellDB[k] = v
     end
 
+    local backupText = F.GetBackupNotificationText(pendingImportBackup, pendingImportBackupState)
+    local message = "Selected Cell settings were imported."
+    if backupText then
+        message = message .. "\n" .. backupText
+    end
+    F.AddAddonNotification("import", "Profile Imported", message)
+    pendingImportBackup = nil
+    pendingImportBackupState = nil
+
     if noReload then
         F.Print(L["Profile imported successfully."])
         -- TODO: F.Print(L["Profile imported: %s."])
@@ -191,6 +204,8 @@ local function GetExportString(includeNicknames, includeCharacter)
     db["flavor"] = Cell.flavor
     db["fallbackGroupType"] = nil
     db["fallbackInMythic"] = nil
+    db["addonNotifications"] = nil
+    db["systemTools"] = nil
 
     local str = Serializer:Serialize(db) -- serialize
     str = LibDeflate:CompressDeflate(str, deflateConfig) -- compress
@@ -225,6 +240,11 @@ local function CreateImportConfirmationFrame()
     button1:SetPoint("BOTTOMRIGHT", button2, "BOTTOMLEFT", P.Scale(1), 0)
     button1:SetBackdropBorderColor(Cell.GetAccentColorRGB())
     button1:SetScript("OnClick", function()
+        pendingImportBackup, pendingImportBackupState = F.CreateAutoBackup("Auto backup before profile import", {
+            ["tag"] = "Profile",
+            ["type"] = "profile_import",
+            ["signature"] = "profile_import",
+        })
         DoImport()
         confirmationFrame:Hide()
         importExportFrame:Hide()
@@ -426,6 +446,8 @@ local function CreateImportExportFrame()
                         success, data = Serializer:Deserialize(data) -- deserialize
 
                         if success and data then
+                            data["addonNotifications"] = nil
+                            data["systemTools"] = nil
                             title:SetText(L["Import"]..": r"..version)
                             importBtn:SetEnabled(true)
                             imported = data

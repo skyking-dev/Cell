@@ -987,6 +987,20 @@ function F.IterateSharedUnitButtons(func)
     end
 end
 
+local function IsTruthyOrSecret(value)
+    if value == nil then
+        return false
+    end
+    if not F.IsValueNonSecret(value) then
+        return true
+    end
+    return value == true or value == 1
+end
+
+local function IsUnitMatchOrSecret(unit1, unit2)
+    return IsTruthyOrSecret(UnitIsUnit(unit1, unit2))
+end
+
 function F.GetUnitButtonByUnit(unit, getSpotlights, getQuickAssist)
     if not unit then return end
 
@@ -1007,7 +1021,7 @@ function F.GetUnitButtonByUnit(unit, getSpotlights, getQuickAssist)
     if getSpotlights then
         spotlights = {}
         for _, b in pairs(Cell.unitButtons.spotlight) do
-            if b.unit and UnitIsUnit(b.unit, unit) then
+            if b.unit and IsUnitMatchOrSecret(b.unit, unit) then
                 tinsert(spotlights, b)
             end
         end
@@ -1185,7 +1199,7 @@ function F.GetUnitClassColor(unit, class, guid)
     class = class or select(2, UnitClass(unit))
     guid = guid or UnitGUID(unit)
 
-    if UnitIsPlayer(unit) or UnitInPartyIsAI(unit) then -- player
+    if UnitIsPlayer(unit) or IsTruthyOrSecret(UnitInPartyIsAI(unit)) then -- player
         return F.GetClassColor(class)
     elseif F.IsPet(guid, unit) then -- pet
         return 0.5, 0.5, 1
@@ -1451,31 +1465,38 @@ end
 
 function F.UnitInGroup(unit, ignorePets)
     if ignorePets then
-        return UnitIsUnit(unit, "player") or UnitInParty(unit) or UnitInRaid(unit) or UnitInPartyIsAI(unit)
+        return IsUnitMatchOrSecret(unit, "player")
+            or IsTruthyOrSecret(UnitInParty(unit))
+            or IsTruthyOrSecret(UnitInRaid(unit))
+            or IsTruthyOrSecret(UnitInPartyIsAI(unit))
     else
-        return UnitIsUnit(unit, "player") or UnitIsUnit(unit, "pet") or UnitPlayerOrPetInParty(unit) or UnitPlayerOrPetInRaid(unit) or UnitInPartyIsAI(unit)
+        return IsUnitMatchOrSecret(unit, "player")
+            or IsUnitMatchOrSecret(unit, "pet")
+            or IsTruthyOrSecret(UnitPlayerOrPetInParty(unit))
+            or IsTruthyOrSecret(UnitPlayerOrPetInRaid(unit))
+            or IsTruthyOrSecret(UnitInPartyIsAI(unit))
     end
 end
 
 -- UnitTokenFromGUID
 function F.GetTargetUnitID(target)
-    if UnitIsUnit(target, "player") then
+    if IsUnitMatchOrSecret(target, "player") then
         return "player"
-    elseif UnitIsUnit(target, "pet") then
+    elseif IsUnitMatchOrSecret(target, "pet") then
         return "pet"
     end
 
     if not F.UnitInGroup(target) then return end
 
-    if UnitIsPlayer(target) or UnitInPartyIsAI(target) then
+    if UnitIsPlayer(target) or IsTruthyOrSecret(UnitInPartyIsAI(target)) then
         for unit in F.IterateGroupMembers() do
-            if UnitIsUnit(target, unit) then
+            if IsUnitMatchOrSecret(target, unit) then
                 return unit
             end
         end
     else
         for unit in F.IterateGroupPets() do
-            if UnitIsUnit(target, unit) then
+            if IsUnitMatchOrSecret(target, unit) then
                 return unit
             end
         end
@@ -1483,15 +1504,15 @@ function F.GetTargetUnitID(target)
 end
 
 function F.GetTargetPetID(target)
-    if UnitIsUnit(target, "player") then
+    if IsUnitMatchOrSecret(target, "player") then
         return "pet"
     end
 
     if not F.UnitInGroup(target) then return end
 
-    if UnitIsPlayer(target) or UnitInPartyIsAI(target) then
+    if UnitIsPlayer(target) or IsTruthyOrSecret(UnitInPartyIsAI(target)) then
         for unit in F.IterateGroupMembers() do
-            if UnitIsUnit(target, unit) then
+            if IsUnitMatchOrSecret(target, unit) then
                 return F.GetPetUnit(unit)
             end
         end
@@ -1536,28 +1557,28 @@ function F.IsVehicle(guid)
 end
 
 function F.GetTargetUnitInfo()
-    if UnitIsUnit("target", "player") then
+    if IsUnitMatchOrSecret("target", "player") then
         return "player", UnitName("player"), UnitClassBase("player")
-    elseif UnitIsUnit("target", "pet") then
+    elseif IsUnitMatchOrSecret("target", "pet") then
         return "pet", UnitName("pet")
     end
     if not F.UnitInGroup("target") then return end
 
     if IsInRaid() then
         for i = 1, GetNumGroupMembers() do
-            if UnitIsUnit("target", "raid"..i) then
+            if IsUnitMatchOrSecret("target", "raid"..i) then
                 return "raid"..i, UnitName("raid"..i), UnitClassBase("raid"..i)
             end
-            if UnitIsUnit("target", "raidpet"..i) then
+            if IsUnitMatchOrSecret("target", "raidpet"..i) then
                 return "raidpet"..i, UnitName("raidpet"..i)
             end
         end
     elseif IsInGroup() then
         for i = 1, GetNumGroupMembers()-1 do
-            if UnitIsUnit("target", "party"..i) then
+            if IsUnitMatchOrSecret("target", "party"..i) then
                 return "party"..i, UnitName("party"..i), UnitClassBase("party"..i)
             end
-            if UnitIsUnit("target", "partypet"..i) then
+            if IsUnitMatchOrSecret("target", "partypet"..i) then
                 return "partypet"..i, UnitName("partypet"..i)
             end
         end
@@ -2382,66 +2403,119 @@ end
 
 rc:SetScript("OnEvent", DELAYED_SPELLS_CHANGED)
 
+local function GetNonSecretBoolean(value, fallback)
+    if not F.IsValueNonSecret(value) then
+        return fallback
+    end
+    return value and true or false
+end
+
+local function GetNonSecretRangeResult(value, fallback)
+    if value == nil then
+        return fallback
+    end
+    if not F.IsValueNonSecret(value) then
+        return fallback
+    end
+    if value == true or value == 1 then
+        return true
+    end
+    if value == false or value == 0 then
+        return false
+    end
+    return fallback
+end
+
 function F.IsInRange(unit, check)
-    local visible = UnitIsVisible(unit)
-    if not F.IsValueNonSecret(visible) or not visible then
+    local visible = GetNonSecretBoolean(UnitIsVisible(unit), false)
+    if not visible then
         return false
     end
 
-    if UnitIsUnit("player", unit) then
+    local isPlayerUnit = GetNonSecretBoolean(UnitIsUnit("player", unit), false)
+    if isPlayerUnit then
         return true
 
     elseif not check and F.UnitInGroup(unit) then
         -- NOTE: UnitInRange only works with group players/pets
         --! but not available for PLAYER PET when SOLO
         local inRange, checked = UnitInRange(unit)
-        -- Midnight 12.0.0+: UnitInRange returns secret booleans during restricted contexts
-        if not F.IsValueNonSecret(checked) then
+        local checkedBool = GetNonSecretBoolean(checked, nil)
+        if checkedBool ~= true then
             return F.IsInRange(unit, true)
         end
-        if not checked then
-            return F.IsInRange(unit, true)
-        end
-        return inRange
+        return GetNonSecretBoolean(inRange, true)
 
     else
-        if UnitCanAssist("player", unit) then -- or UnitCanCooperate("player", unit)
-            if not (UnitIsConnected(unit) and UnitInSamePhase(unit)) then
+        local canAssist = GetNonSecretBoolean(UnitCanAssist("player", unit), false)
+        if canAssist then -- or UnitCanCooperate("player", unit)
+            local isConnected = GetNonSecretBoolean(UnitIsConnected(unit), false)
+            local inSamePhase = GetNonSecretBoolean(UnitInSamePhase(unit), false)
+            if not (isConnected and inSamePhase) then
                 return false
             end
 
-            if UnitIsDead(unit) then
+            local isDead = GetNonSecretBoolean(UnitIsDead(unit), false)
+            if isDead then
                 if spell_dead then
-                    return UnitInSpellRange(spell_dead, unit)
+                    local deadInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_dead, unit), nil)
+                    if deadInRange ~= nil then
+                        return deadInRange
+                    end
                 end
             elseif spell_friend then
-                return UnitInSpellRange(spell_friend, unit)
+                local friendInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_friend, unit), nil)
+                if friendInRange ~= nil then
+                    return friendInRange
+                end
             end
 
             local inRange, checked = UnitInRange(unit)
-            -- Midnight 12.0.0+: UnitInRange returns secret booleans during restricted contexts
-            if not F.IsValueNonSecret(checked) then
+            local checkedBool = GetNonSecretBoolean(checked, nil)
+            if checkedBool ~= true then
                 -- Skip, fall through to pet/interact checks below
-            elseif checked then
-                return inRange
+            else
+                return GetNonSecretBoolean(inRange, true)
             end
 
-            if UnitIsUnit(unit, "pet") and spell_pet then
+            local isPet = GetNonSecretBoolean(UnitIsUnit(unit, "pet"), false)
+            if isPet and spell_pet then
                 -- no spell_friend, use spell_pet
-                return UnitInSpellRange(spell_pet, unit)
+                local petInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_pet, unit), nil)
+                if petInRange ~= nil then
+                    return petInRange
+                end
             end
 
-        elseif UnitCanAttack("player", unit) then
-            if UnitIsDead(unit) then
-                return CheckInteractDistance(unit, 4) -- 28 yards
-            elseif spell_harm then
-                return UnitInSpellRange(spell_harm, unit)
+        else
+            local canAttack = GetNonSecretBoolean(UnitCanAttack("player", unit), false)
+            if canAttack then
+                local isDead = GetNonSecretBoolean(UnitIsDead(unit), false)
+                if isDead then
+                    local deadInteract = GetNonSecretRangeResult(CheckInteractDistance(unit, 4), nil)
+                    if deadInteract ~= nil then
+                        return deadInteract -- 28 yards
+                    end
+                elseif spell_harm then
+                    local harmInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_harm, unit), nil)
+                    if harmInRange ~= nil then
+                        return harmInRange
+                    end
+                end
+
+                local itemInRange = GetNonSecretRangeResult(IsItemInRange(harmItems[playerClass], unit), nil)
+                if itemInRange ~= nil then
+                    return itemInRange
+                end
             end
-            return IsItemInRange(harmItems[playerClass], unit)
         end
 
         if not InCombatLockdown() then
-            return CheckInteractDistance(unit, 4) -- 28 yards
+            local interactInRange = GetNonSecretRangeResult(CheckInteractDistance(unit, 4), nil)
+            if interactInRange ~= nil then
+                return interactInRange -- 28 yards
+            end
+            return false
         end
 
         return true

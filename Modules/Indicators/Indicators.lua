@@ -20,6 +20,7 @@ local selected, currentLayout, currentLayoutTable
 local LoadIndicatorList
 local listButtons = {}
 local ListHighlightFn
+local currentLayoutIssueReport
 
 -------------------------------------------------
 -- preview
@@ -1481,6 +1482,45 @@ local auraTypeItems = {
     },
 }
 
+local listCompatibilityText
+
+local function UpdateIndicatorButtonVisual(id)
+    local button = listButtons[id]
+    local indicator = currentLayoutTable and currentLayoutTable["indicators"] and currentLayoutTable["indicators"][id]
+    if not button or not indicator then return end
+
+    local issue = currentLayoutIssueReport and currentLayoutIssueReport.indicatorIssuesByIndex and currentLayoutIssueReport.indicatorIssuesByIndex[id]
+    button.compatibilityIssue = issue
+
+    if issue then
+        if indicator["enabled"] then
+            button:SetTextColor(1, 0.45, 0.45, 1)
+            button.typeIcon:SetAlpha(0.85)
+        else
+            button:SetTextColor(0.65, 0.3, 0.3, 1)
+            button.typeIcon:SetAlpha(0.3)
+        end
+    else
+        if indicator["enabled"] then
+            button:SetTextColor(1, 1, 1, 1)
+            button.typeIcon:SetAlpha(0.55)
+        else
+            button:SetTextColor(0.466, 0.466, 0.466, 1)
+            button.typeIcon:SetAlpha(0.15)
+        end
+    end
+end
+
+local function UpdateListCompatibilityText()
+    if not listCompatibilityText then return end
+
+    if currentLayoutIssueReport and currentLayoutIssueReport.issueCount > 0 then
+        listCompatibilityText:SetText("|cffff6b6bCompatibility issues detected in this layout.|r\n|cffb7b7b7Hover red entries or open About > Compatibility.|r")
+    else
+        listCompatibilityText:SetText("")
+    end
+end
+
 local function CreateListPane()
     local listPane = Cell.CreateTitledPane(indicatorsTab, L["Indicators"], 136, 487)
     listPane:SetPoint("TOPLEFT", 5, -115)
@@ -1588,6 +1628,12 @@ local function CreateListPane()
         F.ShowIndicatorsCopyFrame()
     end)
     Cell.RegisterForCloseDropdown(copyBtn)
+
+    listCompatibilityText = listPane:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+    listCompatibilityText:SetPoint("BOTTOMLEFT", 2, 1)
+    listCompatibilityText:SetPoint("BOTTOMRIGHT", -2, 1)
+    listCompatibilityText:SetJustifyH("LEFT")
+    listCompatibilityText:SetSpacing(2)
 end
 
 -------------------------------------------------
@@ -1844,15 +1890,7 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 indicatorTable[currentSetting] = value
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, value)
-                -- show enabled/disabled status
-                if value then
-                    listButtons[id]:SetTextColor(1, 1, 1, 1)
-                else
-                    listButtons[id]:SetTextColor(0.466, 0.466, 0.466, 1)
-                end
-                if listButtons[id].typeIcon then
-                    listButtons[id].typeIcon:SetAlpha(value and 0.55 or 0.15)
-                end
+                UpdateIndicatorButtonVisual(id)
             end)
 
         -- checkbutton
@@ -2186,6 +2224,7 @@ end
 LoadIndicatorList = function()
     F.Debug("|cffff7777LoadIndicatorList:|r", currentLayout)
     listFrame.scrollFrame:Reset()
+    currentLayoutIssueReport = F.GetCompatibilityLayoutIssues and F.GetCompatibilityLayoutIssues(currentLayout)
 
     local n = 0
     for i, t in pairs(currentLayoutTable["indicators"]) do
@@ -2196,7 +2235,15 @@ LoadIndicatorList = function()
             P.Size(listButtons[i].typeIcon, 16, 16)
 
             listButtons[i].ShowTooltip = function()
-                if listButtons[i]:GetFontString():IsTruncated() then
+                if listButtons[i].compatibilityIssue then
+                    CellTooltip:SetOwner(listButtons[i], "ANCHOR_NONE")
+                    CellTooltip:SetPoint("RIGHT", listButtons[i], "LEFT")
+                    CellTooltip:AddLine(listButtons[i]:GetText())
+                    for _, line in ipairs(listButtons[i].compatibilityIssue.lines) do
+                        CellTooltip:AddLine(line, 1, 0.45, 0.45, true)
+                    end
+                    CellTooltip:Show()
+                elseif listButtons[i]:GetFontString():IsTruncated() then
                     CellTooltip:SetOwner(listButtons[i], "ANCHOR_NONE")
                     CellTooltip:SetPoint("RIGHT", listButtons[i], "LEFT")
                     CellTooltip:AddLine(listButtons[i]:GetText())
@@ -2263,14 +2310,7 @@ LoadIndicatorList = function()
         b.id = i
         n = i
 
-        -- show enabled/disabled status
-        if t["enabled"] then
-            b:SetTextColor(1, 1, 1, 1)
-            b.typeIcon:SetAlpha(0.55)
-        else
-            b:SetTextColor(0.466, 0.466, 0.466, 1)
-            b.typeIcon:SetAlpha(0.15)
-        end
+        UpdateIndicatorButtonVisual(i)
 
         b:SetParent(listFrame.scrollFrame.content)
         b:SetPoint("RIGHT")
@@ -2281,6 +2321,8 @@ LoadIndicatorList = function()
         end
         b:Show()
     end
+    UpdateListCompatibilityText()
+    Cell.Fire("UpdateCompatibilityReport")
     listFrame.scrollFrame:SetContentHeight(P.Scale(20), n, -P.Scale(1))
 
     ListHighlightFn = Cell.CreateButtonGroup(listButtons, ShowIndicatorSettings, function(id)

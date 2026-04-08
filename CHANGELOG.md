@@ -1,3 +1,17 @@
+# r275.8-skyking-dev Compatibility reports, diagnostics, and curation tools
+
+## Compatibility & Stability
+- Added a compatibility report that persists "No" on old-profile reset prompts and points to the affected layouts/indicators instead of asking again every login.
+- Indicators now surface compatibility issues directly in the list, with red highlighting and tooltips for invalid spell IDs, duplicate built-ins, and missing built-ins.
+- Fixed `secret boolean` crashes in range and group checks by guarding `UnitIsUnit`, `UnitInParty`, `UnitInRaid`, and related target-resolution helpers.
+
+## Tools & Backups
+- Added an About notifications center plus automatic snapshots around imports and destructive flows, with reuse/retention controls for auto backups.
+- Added Midnight diagnostics and utility tools for comm restrictions, queued sync traffic, and group version visibility.
+
+## Raid Debuffs
+- Added raid debuff curation metadata, reporting, and review states to make Midnight debuff cleanup easier without losing the underlying spell list.
+
 # r275.6 Midnight dispel filtering and private aura options
 
 ## Indicators

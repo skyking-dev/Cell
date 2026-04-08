@@ -86,6 +86,13 @@ local barAnimationType, highlightEnabled, predictionEnabled
 local shieldEnabled, overshieldEnabled, overshieldReverseFillEnabled
 local absorbEnabled, absorbInvertColor
 
+local SECRET_HELPFUL_CAST_FALLBACK_WINDOW = 1.5
+local secretHelpfulCastFallbacks = {
+    [86150] = "defensive", -- Guardian of Ancient Kings (cast spell)
+    [86659] = "defensive", -- Guardian of Ancient Kings (base buff)
+    [212641] = "defensive", -- Guardian of Ancient Kings (glyph/model variant)
+}
+
 -- Midnight: Curve for CELL_FADE_OUT_HEALTH_PERCENT feature
 -- Maps health percent -> alpha so we can evaluate secret health% without comparisons
 local fadeOutHealthCurve
@@ -1859,6 +1866,26 @@ local function ResetBuffVars(self)
     self.states.BGFlag = nil -- TODO: move to _buffs
 end
 
+local function RememberSecretHelpfulCast(self, spellId)
+    if not F.IsValueNonSecret(spellId) then return end
+
+    local fallbackKind = secretHelpfulCastFallbacks[spellId]
+    if not fallbackKind then return end
+
+    self._recentSecretHelpfulCastKind = fallbackKind
+    self._recentSecretHelpfulCastAt = GetTime()
+    self._recentSecretHelpfulCastSpellId = spellId
+end
+
+local function GetRecentSecretHelpfulCastKind(self)
+    local castAt = self._recentSecretHelpfulCastAt
+    if not castAt or GetTime() - castAt > SECRET_HELPFUL_CAST_FALLBACK_WINDOW then
+        return nil
+    end
+
+    return self._recentSecretHelpfulCastKind
+end
+
 local function HandleBuff(self, auraInfo)
     local unit = self.states.displayedUnit
     local auraInstanceID = auraInfo.auraInstanceID
@@ -1902,7 +1929,15 @@ local function HandleBuff(self, auraInfo)
             end
             -- Catch remaining raid-important secret buffs (e.g. Power Infusion)
             if not isDefensive and not isExternal then
-                isExternal = not _IsAuraFilteredOut(unit, auraInstanceID, "HELPFUL|RAID")
+                local isRaidImportant = not _IsAuraFilteredOut(unit, auraInstanceID, "HELPFUL|RAID")
+                if isRaidImportant then
+                    local fallbackKind = GetRecentSecretHelpfulCastKind(self)
+                    if fallbackKind == "defensive" then
+                        isDefensive = true
+                    else
+                        isExternal = true
+                    end
+                end
             end
         end
 
@@ -2102,6 +2137,9 @@ local function ResetAuraTables(self)
     self._mirror_image = nil
     self._mass_barrier = nil
     self._mass_barrier_icon = nil
+    self._recentSecretHelpfulCastKind = nil
+    self._recentSecretHelpfulCastAt = nil
+    self._recentSecretHelpfulCastSpellId = nil
 end
 
 -------------------------------------------------
@@ -3946,6 +3984,9 @@ local function UnitButton_RegisterEvents(self)
     self:RegisterEvent("UNIT_DISPLAYPOWER")
 
     self:RegisterEvent("UNIT_AURA")
+    if Cell.isMidnight then
+        self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+    end
 
     self:RegisterEvent("UNIT_HEAL_PREDICTION")
     self:RegisterEvent("UNIT_ABSORB_AMOUNT_CHANGED")
@@ -4017,7 +4058,7 @@ local function UnitButton_UnregisterEvents(self)
     self:UnregisterAllEvents()
 end
 
-local function UnitButton_OnEvent(self, event, unit, arg)
+local function UnitButton_OnEvent(self, event, unit, arg, arg2)
     if unit and (self.states.displayedUnit == unit or self.states.unit == unit) then
         if  event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" or event == "UNIT_CONNECTION" then
             self._updateRequired = 1
@@ -4079,6 +4120,9 @@ local function UnitButton_OnEvent(self, event, unit, arg)
             UnitButton_UpdatePowerType(self)
             UnitButton_UpdatePowerTextColor(self)
             UnitButton_UpdatePowerText(self)
+
+        elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+            RememberSecretHelpfulCast(self, arg2)
 
         elseif event == "UNIT_AURA" then
             UnitButton_UpdateAuras(self, arg)
@@ -4205,6 +4249,9 @@ local function UnitButton_OnAttributeChanged(self, name, value)
                 if not self.isSpotlight then Cell.vars.names[self.__unitName] = nil end
                 self.__unitName = nil
             end
+            self._recentSecretHelpfulCastKind = nil
+            self._recentSecretHelpfulCastAt = nil
+            self._recentSecretHelpfulCastSpellId = nil
             wipe(self.states)
             -- Reset calculator predicted values to prevent stale data from previous unit
             if self.widgets and self.widgets.healthCalculator then

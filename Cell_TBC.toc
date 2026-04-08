@@ -1,6 +1,6 @@
 ## Interface: 20505
 ## Title: Cell
-## Version: r275-beta
+## Version: r275.8-skyking-dev
 ## Author: enderneko
 ## X-Flavor: Vanilla
 ## SavedVariables: CellDB, CellDBBackup

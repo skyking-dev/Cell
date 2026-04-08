@@ -3,7 +3,7 @@ local L = Cell.L
 local F = Cell.funcs
 local P = Cell.pixelPerfectFuncs
 
-local lastShownTab
+local lastShownTab, init
 
 local optionsFrame = Cell.CreateFrame("CellOptionsFrame", Cell.frames.mainFrame, 432, 401)
 Cell.frames.optionsFrame = optionsFrame
@@ -32,6 +32,58 @@ end
 -------------------------------------------------
 local generalBtn, appearanceBtn, clickCastingsBtn, aboutBtn, layoutsBtn, indicatorsBtn, debuffsBtn, utilitiesBtn, closeBtn
 
+local function CreateWarningBadge(button)
+    local badge = button:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_TITLE")
+    badge:SetPoint("TOPRIGHT", -3, -1)
+    badge:SetText("|cffff5555!|r")
+    badge:Hide()
+    button.warningBadge = badge
+end
+
+local function SetWarningState(button, enabled, tooltipText)
+    if not button or not button.warningBadge then return end
+
+    if enabled then
+        button.warningBadge:Show()
+        button.ShowTooltip = function(self)
+            CellTooltip:SetOwner(self, "ANCHOR_NONE")
+            CellTooltip:SetPoint("BOTTOM", self, "TOP", 0, 3)
+            CellTooltip:AddLine("|cffff5555Compatibility warning|r")
+            if tooltipText and tooltipText ~= "" then
+                CellTooltip:AddLine(tooltipText, 1, 1, 1, true)
+            end
+            CellTooltip:Show()
+        end
+        button.HideTooltip = function()
+            CellTooltip:Hide()
+        end
+    else
+        button.warningBadge:Hide()
+        button.ShowTooltip = nil
+        button.HideTooltip = nil
+    end
+end
+
+function F.UpdateCompatibilityTabWarnings()
+    if not init then return end
+
+    local report = F.GetCompatibilityReport and F.GetCompatibilityReport()
+    if not report then return end
+
+    local aboutTooltip
+    if report.hasWarnings then
+        aboutTooltip = "Open About > Compatibility to review old or unsupported settings."
+    end
+
+    local indicatorsTooltip
+    if report.layoutIssueCount > 0 then
+        indicatorsTooltip = "Some indicator layouts still reference unsupported data, invalid spell IDs, or missing built-ins."
+    end
+
+    SetWarningState(aboutBtn, report.hasWarnings, aboutTooltip)
+    SetWarningState(indicatorsBtn, report.layoutIssueCount > 0, indicatorsTooltip)
+end
+
 local function CreateTabButtons()
     generalBtn = Cell.CreateButton(optionsFrame, L["General"], "accent-hover", {105, 20}, false, false, "CELL_FONT_WIDGET_TITLE", "CELL_FONT_WIDGET_TITLE_DISABLE")
     appearanceBtn = Cell.CreateButton(optionsFrame, L["Appearance"], "accent-hover", {105, 20}, false, false, "CELL_FONT_WIDGET_TITLE", "CELL_FONT_WIDGET_TITLE_DISABLE")
@@ -59,6 +111,9 @@ local function CreateTabButtons()
     aboutBtn:SetPoint("BOTTOMLEFT", clickCastingsBtn, "BOTTOMRIGHT", P.Scale(-1), 0)
     closeBtn:SetPoint("BOTTOMLEFT", aboutBtn, "BOTTOMRIGHT", P.Scale(-1), 0)
     closeBtn:SetPoint("BOTTOMRIGHT", utilitiesBtn, "TOPRIGHT", 0, P.Scale(-1))
+
+    CreateWarningBadge(indicatorsBtn)
+    CreateWarningBadge(aboutBtn)
 
     RegisterDragForOptionsFrame(generalBtn)
     RegisterDragForOptionsFrame(appearanceBtn)
@@ -127,7 +182,6 @@ end
 -------------------------------------------------
 -- show & hide
 -------------------------------------------------
-local init
 local function Init()
     if not init then
         init = true
@@ -135,6 +189,7 @@ local function Init()
         P.Reborder(optionsFrame, true)
         CreateTabButtons()
         F.CreateUtilityList(utilitiesBtn)
+        F.UpdateCompatibilityTabWarnings()
     end
 end
 
@@ -150,6 +205,7 @@ function F.ShowOptionsFrame()
         generalBtn:Click()
     end
 
+    F.UpdateCompatibilityTabWarnings()
     optionsFrame:Show()
 end
 
@@ -191,6 +247,10 @@ function F.ShowUtilitiesTab()
     optionsFrame:Show()
     utilitiesBtn:Click()
 end
+
+Cell.RegisterCallback("UpdateCompatibilityReport", "OptionsFrame_UpdateCompatibilityReport", function()
+    F.UpdateCompatibilityTabWarnings()
+end)
 
 -------------------------------------------------
 -- InCombatLockdown

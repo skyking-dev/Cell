@@ -184,8 +184,13 @@ function I.UpdateAoEHealings(t)
 end
 
 function I.IsAoEHealing(name, id)
-    if not F.IsValueNonSecret(name) or not F.IsValueNonSecret(id) then return end
-    return builtInAoEHealings[name] or builtInAoEHealings[id] or customAoEHealings[id]
+    if F.IsValueNonSecret(name) and builtInAoEHealings[name] then
+        return true
+    end
+
+    if F.IsValueNonSecret(id) then
+        return builtInAoEHealings[id] or customAoEHealings[id]
+    end
 end
 
 local summonDuration = {
@@ -344,16 +349,24 @@ end
 local UnitIsUnit = UnitIsUnit
 local bos = F.GetSpellInfo(6940) -- 牺牲祝福
 function I.IsExternalCooldown(name, id, source, target)
-    if not F.IsValueNonSecret(name) or not F.IsValueNonSecret(id) then return end
-    if name == bos then
+    local nameIsReadable = F.IsValueNonSecret(name)
+    local idIsReadable = F.IsValueNonSecret(id)
+
+    if nameIsReadable and name == bos then
         if source and target then
             -- NOTE: hide bos on caster
             return not UnitIsUnit(source, target)
         else
             return true
         end
-    else
-        return builtInExternals[name] or builtInExternals[id] or customExternals[id]
+    end
+
+    if nameIsReadable and builtInExternals[name] then
+        return true
+    end
+
+    if idIsReadable then
+        return builtInExternals[id] or customExternals[id]
     end
 end
 
@@ -418,6 +431,7 @@ local defensives = { -- true: track by name, false: track by id
         [498] = true, -- 圣佑术 - Divine Protection
         [642] = true, -- 圣盾术 - Divine Shield
         [31850] = true, -- 炽热防御者 - Ardent Defender
+        [86659] = true, -- 远古列王守卫 - Guardian of Ancient Kings (base buff)
         [212641] = true, -- 远古列王守卫 - Guardian of Ancient Kings
         [205191] = true, -- 以眼还眼 - Eye for an Eye
         [389539] = true, -- 戒卫 - Sentinel
@@ -497,8 +511,13 @@ function I.UpdateDefensives(t)
 end
 
 function I.IsDefensiveCooldown(name, id)
-    if not F.IsValueNonSecret(name) or not F.IsValueNonSecret(id) then return end
-    return builtInDefensives[name] or builtInDefensives[id] or customDefensives[id]
+    if F.IsValueNonSecret(name) and builtInDefensives[name] then
+        return true
+    end
+
+    if F.IsValueNonSecret(id) then
+        return builtInDefensives[id] or customDefensives[id]
+    end
 end
 
 -------------------------------------------------
@@ -1324,6 +1343,11 @@ function I.UpdateCrowdControls(t)
 end
 
 function I.IsCrowdControls(name, id)
-    if not F.IsValueNonSecret(name) or not F.IsValueNonSecret(id) then return end
-    return builtInCrowdControls[name] or builtInCrowdControls[id] or customCrowdControls[name]
+    if F.IsValueNonSecret(name) and (builtInCrowdControls[name] or customCrowdControls[name]) then
+        return true
+    end
+
+    if F.IsValueNonSecret(id) then
+        return builtInCrowdControls[id]
+    end
 end

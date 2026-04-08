@@ -36,6 +36,8 @@ function F.CreateUtilityList(anchor)
     dumbFS1:SetText(L["Quick Assist"])
     local dumbFS2 = listFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
     dumbFS2:SetText(L["Dispel Request"])
+    local dumbFS3 = listFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    dumbFS3:SetText("Midnight Tools")
 
     -- buttons
     buttons["raidTools"] = Cell.CreateButton(listFrame, L["Raid Tools"], "transparent-accent", {20, 20}, true)
@@ -63,7 +65,19 @@ function F.CreateUtilityList(anchor)
         buttons["quickCast"].id = "quickCast"
         buttons["quickCast"]:SetPoint("TOPLEFT", buttons["quickAssist"], "BOTTOMLEFT")
         buttons["quickCast"]:SetPoint("TOPRIGHT", buttons["quickAssist"], "BOTTOMRIGHT")
-        P.Size(listFrame, ceil(max(dumbFS1:GetStringWidth(), dumbFS2:GetStringWidth())) + 13, 20*5)
+
+        local totalButtons = 5
+        local width = ceil(max(dumbFS1:GetStringWidth(), dumbFS2:GetStringWidth(), dumbFS3:GetStringWidth())) + 13
+
+        if Cell.isMidnight then
+            buttons["midnightTools"] = Cell.CreateButton(listFrame, "Midnight Tools", "transparent-accent", {20, 20}, true)
+            buttons["midnightTools"].id = "midnightTools"
+            buttons["midnightTools"]:SetPoint("TOPLEFT", buttons["quickCast"], "BOTTOMLEFT")
+            buttons["midnightTools"]:SetPoint("TOPRIGHT", buttons["quickCast"], "BOTTOMRIGHT")
+            totalButtons = 6
+        end
+
+        P.Size(listFrame, width, 20*totalButtons)
     else
         P.Size(listFrame, ceil(max(dumbFS1:GetStringWidth(), dumbFS2:GetStringWidth())) + 13, 20*3)
     end
@@ -99,6 +113,7 @@ local utilityHeight = {
     ["dispelRequest"] = 420,
     ["quickAssist"] = 510,
     ["quickCast"] = 510,
+    ["midnightTools"] = 540,
 }
 
 local init
@@ -122,4 +137,10 @@ end)
 
 function F.ShowQuickAssistTab()
     buttons["quickAssist"]:Click()
+end
+
+function F.ShowMidnightToolsTab()
+    if buttons["midnightTools"] then
+        buttons["midnightTools"]:Click()
+    end
 end

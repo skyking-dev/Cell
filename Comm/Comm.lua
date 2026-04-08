@@ -6,6 +6,48 @@ local LibDeflate = LibStub:GetLibrary("LibDeflate")
 local deflateConfig = {level = 9}
 local Serializer = LibStub:GetLibrary("LibSerialize")
 local Comm = LibStub:GetLibrary("AceComm-3.0")
+local midnightDiagnostics = Cell.vars.midnightDiagnostics or {
+    versions = {},
+    lastVersionRequestAt = 0,
+    lastVersionBroadcastAt = 0,
+    commQueue = {
+        lastQueuedAt = 0,
+        lastFlushAt = 0,
+    },
+}
+Cell.vars.midnightDiagnostics = midnightDiagnostics
+
+local function FireMidnightDiagnosticsChanged(reason)
+    Cell.Fire("MidnightDiagnosticsUpdated", reason)
+end
+
+local function NormalizeSenderName(name)
+    if not name or name == "" then return name end
+    if not strfind(name, "-") then
+        name = name .. "-" .. GetNormalizedRealmName()
+    end
+    return name
+end
+
+local function UpdateVersionDiagnostic(sender, version, channel)
+    if not sender or not version then return end
+
+    sender = NormalizeSenderName(sender)
+    midnightDiagnostics.versions[sender] = {
+        version = version,
+        versionNum = tonumber(string.match(version, "%d+")) or 0,
+        channel = channel,
+        receivedAt = time(),
+    }
+
+    FireMidnightDiagnosticsChanged("version")
+end
+
+local function RecordSelfVersion(channel)
+    local selfName = Cell.vars.playerNameFull or F.UnitFullName("player")
+    if not selfName or not Cell.version then return end
+    UpdateVersionDiagnostic(selfName, Cell.version, channel or "SELF")
+end
 
 local function Serialize(data)
     local serialized = Serializer:Serialize(data) -- serialize
@@ -84,6 +126,10 @@ local function QueueCommMessage(prefix, message, distribution, target, priority,
     local key = queueKey or BuildCommQueueKey(prefix, message, distribution, target, priority)
     local queued = commQueueByKey[key]
     if queued then
+        queued.message = message
+        queued.target = target
+        queued.distribution = distribution
+        queued.priority = priority
         queued.callbackFn = callbackFn
     else
         queued = {
@@ -98,8 +144,10 @@ local function QueueCommMessage(prefix, message, distribution, target, priority,
         tinsert(commQueue, queued)
         commQueueByKey[key] = queued
     end
+    midnightDiagnostics.commQueue.lastQueuedAt = time()
     StartCommFlushTicker()
     F.Debug("Cell: Comm queued - restricted context ("..tostring(prefix)..")")
+    FireMidnightDiagnosticsChanged("queue")
 end
 
 function F.FlushCommQueue()
@@ -117,6 +165,7 @@ function F.FlushCommQueue()
     commQueue = {}
     commQueueByKey = {}
     StopCommFlushTicker()
+    midnightDiagnostics.commQueue.lastFlushAt = time()
 
     for _, queued in ipairs(pending) do
         if CanSendCommDistribution(queued.distribution, queued.target) then
@@ -126,6 +175,7 @@ function F.FlushCommQueue()
         end
     end
 
+    FireMidnightDiagnosticsChanged("queue")
     return true
 end
 
@@ -148,6 +198,68 @@ function F.TrySendCommMessage(prefix, message, distribution, target, priority, c
     end
 
     Comm:SendCommMessage(prefix, message, distribution, target, priority, callbackFn)
+    return true
+end
+
+function F.GetCommQueueSnapshot()
+    local snapshot = {
+        size = #commQueue,
+        lastQueuedAt = midnightDiagnostics.commQueue.lastQueuedAt,
+        lastFlushAt = midnightDiagnostics.commQueue.lastFlushAt,
+        entries = {},
+        prefixCounts = {},
+    }
+
+    for _, queued in ipairs(commQueue) do
+        tinsert(snapshot.entries, {
+            prefix = queued.prefix,
+            distribution = queued.distribution,
+            target = queued.target,
+            priority = queued.priority,
+        })
+        snapshot.prefixCounts[queued.prefix] = (snapshot.prefixCounts[queued.prefix] or 0) + 1
+    end
+
+    return snapshot
+end
+
+function F.GetVersionDiagnosticsSnapshot()
+    local snapshot = {
+        entries = {},
+        lastVersionRequestAt = midnightDiagnostics.lastVersionRequestAt,
+        lastVersionBroadcastAt = midnightDiagnostics.lastVersionBroadcastAt,
+    }
+
+    for sender, info in pairs(midnightDiagnostics.versions) do
+        snapshot.entries[sender] = {
+            version = info.version,
+            versionNum = info.versionNum,
+            channel = info.channel,
+            receivedAt = info.receivedAt,
+        }
+    end
+
+    return snapshot
+end
+
+function F.RequestVersionDiagnostics()
+    RecordSelfVersion("SELF")
+
+    local sendChannel = F.GetGroupCommChannel()
+    if not sendChannel then
+        FireMidnightDiagnosticsChanged("version")
+        return false
+    end
+
+    midnightDiagnostics.lastVersionRequestAt = time()
+    midnightDiagnostics.lastVersionBroadcastAt = time()
+    F.TrySendCommMessage("CELL_VERSION_REQ", "req", sendChannel, nil, "ALERT", nil, {
+        queueKey = "CELL_VERSION_REQ:" .. sendChannel,
+    })
+    F.TrySendCommMessage("CELL_VERSION", Cell.version, sendChannel, nil, "NORMAL", nil, {
+        queueKey = "CELL_VERSION:" .. sendChannel,
+    })
+    FireMidnightDiagnosticsChanged("version")
     return true
 end
 
@@ -174,6 +286,7 @@ function eventFrame:GROUP_ROSTER_UPDATE()
         eventFrame:UnregisterEvent("GROUP_ROSTER_UPDATE")
         local sendChannel = F.GetGroupCommChannel()
         if sendChannel then
+            midnightDiagnostics.lastVersionBroadcastAt = time()
             F.TrySendCommMessage("CELL_VERSION", Cell.version, sendChannel, nil, "NORMAL")
         end
     end
@@ -181,19 +294,33 @@ end
 
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 function eventFrame:PLAYER_LOGIN()
+    RecordSelfVersion("SELF")
     if IsInGuild() then
+        midnightDiagnostics.lastVersionBroadcastAt = time()
         F.TrySendCommMessage("CELL_VERSION", Cell.version, "GUILD", nil, "NORMAL")
     end
 end
 
 Comm:RegisterComm("CELL_VERSION", function(prefix, message, channel, sender)
     if sender == UnitName("player") then return end
+    UpdateVersionDiagnostic(sender, message, channel)
     local version = tonumber(string.match(message, "%d+"))
     local myVersion = tonumber(string.match(Cell.version, "%d+"))
     if (not CellDB["lastVersionCheck"] or time()-CellDB["lastVersionCheck"]>=25200) and version and myVersion and myVersion < version then
         CellDB["lastVersionCheck"] = time()
         F.Print(L["New version found (%s). Please visit %s to get the latest version."]:format(message, "|cFF00CCFFhttps://www.curseforge.com/wow/addons/cell|r"))
     end
+end)
+
+Comm:RegisterComm("CELL_VERSION_REQ", function(prefix, message, channel, sender)
+    if sender == UnitName("player") then return end
+    if not channel then return end
+
+    local target = channel == "WHISPER" and sender or nil
+    midnightDiagnostics.lastVersionBroadcastAt = time()
+    F.TrySendCommMessage("CELL_VERSION", Cell.version, channel, target, "NORMAL", nil, {
+        queueKey = "CELL_VERSION_REPLY:" .. tostring(channel) .. ":" .. tostring(target or ""),
+    })
 end)
 
 -----------------------------------------

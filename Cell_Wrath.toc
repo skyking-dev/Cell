@@ -1,6 +1,6 @@
 ## Interface: 38000
 ## Title: Cell
-## Version: r275-beta
+## Version: r275.8-skyking-dev
 ## Author: enderneko
 ## X-Flavor: Wrath
 ## SavedVariables: CellDB, CellDBBackup

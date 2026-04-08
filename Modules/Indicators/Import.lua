@@ -52,6 +52,11 @@ local function CreateIndicatorsImportFrame()
             ..L["|cff1Aff1AYes|r - Overwrite"].."\n|cffff1A1A"..L["No"].."|r - "..L["Cancel"]
 
         local popup = Cell.CreateConfirmPopup(Cell.frames.indicatorsTab, 250, text, function(self)
+            local backup, backupState = F.CreateAutoBackup("Auto backup before indicators import: " .. toLayoutName, {
+                ["tag"] = "Indicators",
+                ["type"] = "indicators_import",
+                ["signature"] = "indicators_import:" .. tostring(toLayout),
+            })
             local toLayoutTable = CellDB["layouts"][toLayout]
             -- last custom index
             local lastIndex
@@ -121,6 +126,12 @@ local function CreateIndicatorsImportFrame()
             Cell.Fire("UpdateIndicators", toLayout)
             Cell.Fire("IndicatorsChanged", toLayout)
 
+            local backupText = F.GetBackupNotificationText(backup, backupState)
+            local message = toLayoutName
+            if backupText then
+                message = message .. "\n" .. backupText
+            end
+            F.AddAddonNotification("import", "Indicators Imported", message)
             importFrame:Hide()
         end, function(self)
             importFrame:Hide()

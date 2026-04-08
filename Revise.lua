@@ -4,17 +4,252 @@ local F = Cell.funcs
 local I = Cell.iFuncs
 local U = Cell.uFuncs
 
+local function GetRevisionNumber(db)
+    return db and db["revise"] and tonumber(string.match(db["revise"], "%d+")) or 0
+end
+
+local function GetCompatibilityDB()
+    if type(CellDB["compatibility"]) ~= "table" then
+        CellDB["compatibility"] = {}
+    end
+    return CellDB["compatibility"]
+end
+
+local function GetIndicatorDisplayName(indicator)
+    if not indicator then return UNKNOWNOBJECT end
+
+    if indicator["type"] == "built-in" and indicator["name"] and L[indicator["name"]] then
+        return L[indicator["name"]]
+    end
+
+    return indicator["name"] or indicator["indicatorName"] or UNKNOWNOBJECT
+end
+
+local function GetDefaultIndicatorDisplayName(indicatorName)
+    local index = Cell.defaults.indicatorIndices and Cell.defaults.indicatorIndices[indicatorName]
+    local indicator = index and Cell.defaults.layout and Cell.defaults.layout.indicators and Cell.defaults.layout.indicators[index]
+    if indicator and indicator["name"] and L[indicator["name"]] then
+        return L[indicator["name"]]
+    end
+    return indicator and indicator["name"] or indicatorName
+end
+
+local function SortStrings(a, b)
+    return tostring(a) < tostring(b)
+end
+
+local function SortNumbers(a, b)
+    return tonumber(a) < tonumber(b)
+end
+
+local function GetInvalidAuraSpellIds(indicator)
+    local invalid = {}
+    if type(indicator) ~= "table" or type(indicator["auras"]) ~= "table" then
+        return invalid
+    end
+
+    for _, aura in ipairs(indicator["auras"]) do
+        local spellId
+        if type(aura) == "number" then
+            spellId = aura
+        elseif type(aura) == "table" then
+            spellId = aura[1]
+        end
+
+        if spellId and not F.GetSpellInfo(spellId) then
+            tinsert(invalid, tostring(spellId))
+        end
+    end
+
+    return invalid
+end
+
+local function BuildCompatibilityReportData()
+    local report = {
+        dbRevision = GetRevisionNumber(CellDB),
+        charaDbRevision = GetRevisionNumber(CellCharacterDB),
+        globalResetRecommended = false,
+        characterResetRecommended = false,
+        layouts = {},
+        layoutOrder = {},
+        indicatorIssueCount = 0,
+        layoutIssueCount = 0,
+        issueCount = 0,
+        hasWarnings = false,
+        text = "",
+    }
+
+    report.globalResetRecommended = CellDB["revise"] and report.dbRevision < Cell.MIN_VERSION
+    report.characterResetRecommended = CellCharacterDB and CellCharacterDB["revise"] and report.charaDbRevision < Cell.MIN_VERSION
+
+    if type(CellDB["layouts"]) == "table" then
+        for layoutName in pairs(CellDB["layouts"]) do
+            tinsert(report.layoutOrder, layoutName)
+        end
+        table.sort(report.layoutOrder, SortStrings)
+
+        for _, layoutName in ipairs(report.layoutOrder) do
+            local layout = CellDB["layouts"][layoutName]
+            local layoutReport = {
+                name = layoutName,
+                issueCount = 0,
+                lines = {},
+                indicatorIssuesByIndex = {},
+            }
+
+            local builtInCounts = {}
+            local builtInIndices = {}
+
+            if type(layout) == "table" and type(layout["indicators"]) == "table" then
+                for index, indicator in ipairs(layout["indicators"]) do
+                    local indicatorIssue = {
+                        name = GetIndicatorDisplayName(indicator),
+                        lines = {},
+                    }
+
+                    if indicator["type"] == "built-in" then
+                        local indicatorName = indicator["indicatorName"] or indicator["name"] or ("built-in-" .. index)
+                        builtInCounts[indicatorName] = (builtInCounts[indicatorName] or 0) + 1
+                        builtInIndices[indicatorName] = builtInIndices[indicatorName] or {}
+                        tinsert(builtInIndices[indicatorName], index)
+
+                        if not Cell.defaults.indicatorIndices[indicatorName] then
+                            tinsert(indicatorIssue.lines, ("Unsupported built-in indicator: %s"):format(indicatorName))
+                        end
+                    else
+                        local invalidSpellIds = GetInvalidAuraSpellIds(indicator)
+                        if #invalidSpellIds > 0 then
+                            tinsert(indicatorIssue.lines, ("Invalid spell IDs: %s"):format(table.concat(invalidSpellIds, ", ")))
+                        end
+                    end
+
+                    if #indicatorIssue.lines > 0 then
+                        layoutReport.indicatorIssuesByIndex[index] = indicatorIssue
+                        layoutReport.issueCount = layoutReport.issueCount + #indicatorIssue.lines
+                    end
+                end
+            end
+
+            for indicatorName, indices in pairs(builtInIndices) do
+                if #indices > 1 then
+                    for _, index in ipairs(indices) do
+                        local indicatorIssue = layoutReport.indicatorIssuesByIndex[index]
+                        if not indicatorIssue then
+                            indicatorIssue = {
+                                name = GetIndicatorDisplayName(layout["indicators"][index]),
+                                lines = {},
+                            }
+                            layoutReport.indicatorIssuesByIndex[index] = indicatorIssue
+                        end
+                        tinsert(indicatorIssue.lines, ("Duplicate built-in indicator: %s"):format(GetDefaultIndicatorDisplayName(indicatorName)))
+                        layoutReport.issueCount = layoutReport.issueCount + 1
+                    end
+                end
+            end
+
+            local missingBuiltIns = {}
+            for indicatorName in pairs(Cell.defaults.indicatorIndices or {}) do
+                if not builtInCounts[indicatorName] then
+                    tinsert(missingBuiltIns, GetDefaultIndicatorDisplayName(indicatorName))
+                end
+            end
+
+            if #missingBuiltIns > 0 then
+                table.sort(missingBuiltIns, SortStrings)
+                tinsert(layoutReport.lines, ("Missing built-in indicators: %s"):format(table.concat(missingBuiltIns, ", ")))
+                layoutReport.issueCount = layoutReport.issueCount + 1
+            end
+
+            if layoutReport.issueCount > 0 then
+                report.layouts[layoutName] = layoutReport
+                report.issueCount = report.issueCount + layoutReport.issueCount
+                report.layoutIssueCount = report.layoutIssueCount + 1
+                for _ in pairs(layoutReport.indicatorIssuesByIndex) do
+                    report.indicatorIssueCount = report.indicatorIssueCount + 1
+                end
+            end
+        end
+    end
+
+    report.hasWarnings = report.globalResetRecommended or report.characterResetRecommended or report.issueCount > 0
+
+    local lines = {}
+    if report.globalResetRecommended then
+        tinsert(lines, ("Global profile revision r%d is older than the supported minimum r%d."):format(report.dbRevision, Cell.MIN_VERSION))
+    end
+    if report.characterResetRecommended then
+        tinsert(lines, ("Character profile revision r%d is older than the supported minimum r%d. Review Click-Castings and Layout Auto Switch carefully."):format(report.charaDbRevision, Cell.MIN_VERSION))
+    end
+
+    for _, layoutName in ipairs(report.layoutOrder) do
+        local layoutReport = report.layouts[layoutName]
+        if layoutReport then
+            tinsert(lines, "")
+            tinsert(lines, ("[%s]"):format(layoutName == "default" and _G.DEFAULT or layoutName))
+
+            for _, line in ipairs(layoutReport.lines) do
+                tinsert(lines, "- " .. line)
+            end
+
+            local indicatorIndices = {}
+            for index in pairs(layoutReport.indicatorIssuesByIndex) do
+                tinsert(indicatorIndices, index)
+            end
+            table.sort(indicatorIndices, SortNumbers)
+
+            for _, index in ipairs(indicatorIndices) do
+                local indicatorIssue = layoutReport.indicatorIssuesByIndex[index]
+                tinsert(lines, ("- %s: %s"):format(indicatorIssue.name or ("Indicator " .. index), table.concat(indicatorIssue.lines, "; ")))
+            end
+        end
+    end
+
+    if #lines == 0 then
+        tinsert(lines, "No compatibility issues detected.")
+    end
+
+    report.text = table.concat(lines, "\n")
+    return report
+end
+
+function F.GetCompatibilityReport()
+    return BuildCompatibilityReportData()
+end
+
+function F.GetCompatibilityLayoutIssues(layoutName)
+    local report = BuildCompatibilityReportData()
+    return report.layouts[layoutName], report
+end
+
+function F.HasCompatibilityWarnings()
+    return BuildCompatibilityReportData().hasWarnings
+end
+
+local function DismissCompatibilityReset(kind)
+    GetCompatibilityDB()[kind] = true
+
+    if F.AddAddonNotification then
+        F.AddAddonNotification("warning", "Compatibility warning saved", "Cell will stop asking for a reset for this profile. Open About > Compatibility to review what still needs attention.")
+    end
+
+    Cell.Fire("UpdateCompatibilityReport")
+end
+
 function F.Revise()
-    local dbRevision = CellDB["revise"] and tonumber(string.match(CellDB["revise"], "%d+")) or 0
+    local dbRevision = GetRevisionNumber(CellDB)
     F.Debug("DBRevision:", dbRevision)
 
     local charaDbRevision
     if CellCharacterDB then
-        charaDbRevision = CellCharacterDB["revise"] and tonumber(string.match(CellCharacterDB["revise"], "%d+")) or 0
+        charaDbRevision = GetRevisionNumber(CellCharacterDB)
         F.Debug("CharaDBRevision:", charaDbRevision)
     end
 
     if CellDB["revise"] and dbRevision < Cell.MIN_VERSION then -- update from an unsupported version
+        if GetCompatibilityDB().globalResetDismissed then
+            return
+        end
+
         local f = CreateFrame("Frame")
         f:RegisterEvent("PLAYER_ENTERING_WORLD")
         f:SetScript("OnEvent", function()
@@ -23,6 +258,8 @@ function F.Revise()
                 CellDB = nil
                 CellCharacterDB = nil
                 ReloadUI()
+            end, function()
+                DismissCompatibilityReset("globalResetDismissed")
             end)
             popup:SetPoint("TOPLEFT")
         end)
@@ -30,6 +267,10 @@ function F.Revise()
     end
 
     if CellCharacterDB and CellCharacterDB["revise"] and charaDbRevision < Cell.MIN_VERSION then -- update from an unsupported version
+        if GetCompatibilityDB().characterResetDismissed then
+            return
+        end
+
         local f = CreateFrame("Frame")
         f:RegisterEvent("PLAYER_ENTERING_WORLD")
         f:SetScript("OnEvent", function()
@@ -37,6 +278,8 @@ function F.Revise()
             local popup = Cell.CreateConfirmPopup(CellAnchorFrame, 260, L["RESET_CHARACTER"].."\n|cFFB7B7B7"..L["RESET_INCLUDES"].."|r\n"..L["RESET_YES_NO"], function()
                 CellCharacterDB = nil
                 ReloadUI()
+            end, function()
+                DismissCompatibilityReset("characterResetDismissed")
             end)
             popup:SetPoint("TOPLEFT")
         end)

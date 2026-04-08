@@ -13,6 +13,11 @@ local importExportFrame, importBtn, title, textArea
 
 local function DoImport(overwriteExisting)
     local name, layout = imported["name"], imported["data"]
+    local backup, backupState = F.CreateAutoBackup("Auto backup before layout import: " .. name, {
+        ["tag"] = "Layout",
+        ["type"] = "layout_import",
+        ["signature"] = "layout_import:" .. name,
+    })
 
     -- indicators
     local builtInFound = {}
@@ -71,6 +76,13 @@ local function DoImport(overwriteExisting)
             importExportFrame:Hide()
         end
     end
+
+    local backupText = F.GetBackupNotificationText(backup, backupState)
+    local message = name
+    if backupText then
+        message = message .. "\n" .. backupText
+    end
+    F.AddAddonNotification("import", "Layout Imported", message)
     F.Print(L["Layout imported: %s."]:format(name))
 end
 

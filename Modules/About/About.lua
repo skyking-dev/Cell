@@ -10,7 +10,75 @@ aboutTab:Hide()
 
 local authorText, specialThanksText, supportersText1, supportersText2
 local translatorsTextCN, translatorsTextKR, translatorsTextPT, translatorsTextDE, translatorsTextRU, translatorsTextFR, translatorsTextES, translatorsTextIT
+local compatibilityBtn, compatibilityStatus, compatibilityFrame, compatibilityTextArea
 local UpdateFont
+
+local function CreateCompatibilityReportFrame()
+    if compatibilityFrame then return end
+
+    compatibilityFrame = CreateFrame("Frame", "CellOptionsFrame_CompatibilityReport", Cell.frames.optionsFrame, "BackdropTemplate")
+    compatibilityFrame:Hide()
+    compatibilityFrame:SetFrameLevel(Cell.frames.optionsFrame:GetFrameLevel() + 100)
+    compatibilityFrame:SetPoint("TOPLEFT", 1, -100)
+    P.Size(compatibilityFrame, 430, 250)
+    Cell.StylizeFrame(compatibilityFrame, nil, Cell.GetAccentColorTable())
+
+    local title = compatibilityFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_CLASS")
+    title:SetPoint("TOPLEFT", 5, -5)
+    title:SetText(L["Compatibility"] or "Compatibility")
+
+    local closeBtn = Cell.CreateButton(compatibilityFrame, "×", "red", {18, 18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+    closeBtn:SetPoint("TOPRIGHT", -5, -1)
+    closeBtn:SetScript("OnClick", function()
+        compatibilityFrame:Hide()
+    end)
+
+    compatibilityTextArea = Cell.CreateScrollEditBox(compatibilityFrame)
+    compatibilityTextArea:SetPoint("TOPLEFT", 5, -25)
+    compatibilityTextArea:SetPoint("BOTTOMRIGHT", -10, 5)
+    compatibilityTextArea.eb:SetAutoFocus(false)
+end
+
+local function UpdateCompatibilityStatus()
+    if not compatibilityStatus then return end
+
+    local report = F.GetCompatibilityReport and F.GetCompatibilityReport()
+    if not report or not report.hasWarnings then
+        compatibilityStatus:SetText("|cff77ff77No compatibility issues detected.|r")
+        if compatibilityBtn then
+            compatibilityBtn:SetEnabled(true)
+        end
+        return
+    end
+
+    local summary = {}
+    if report.globalResetRecommended then
+        tinsert(summary, "global profile is too old")
+    end
+    if report.characterResetRecommended then
+        tinsert(summary, "character profile is too old")
+    end
+    if report.indicatorIssueCount > 0 then
+        tinsert(summary, ("%d indicator issue(s) found"):format(report.indicatorIssueCount))
+    elseif report.layoutIssueCount > 0 then
+        tinsert(summary, ("%d layout issue(s) found"):format(report.layoutIssueCount))
+    end
+
+    compatibilityStatus:SetText("|cffff6b6bCompatibility warning:|r " .. table.concat(summary, ", "))
+    if compatibilityBtn then
+        compatibilityBtn:SetEnabled(true)
+    end
+end
+
+function F.ShowCompatibilityReport()
+    CreateCompatibilityReportFrame()
+
+    local report = F.GetCompatibilityReport and F.GetCompatibilityReport()
+    compatibilityTextArea.eb:SetText(report and report.text or "No compatibility data available.")
+    compatibilityTextArea.eb:ClearFocus()
+    compatibilityTextArea.scrollFrame:ResetScroll()
+    compatibilityFrame:Show()
+end
 
 -------------------------------------------------
 -- description
@@ -32,12 +100,26 @@ local function CreateDescriptionPane()
         F.ShowCodeSnippets()
     end)
 
+    compatibilityBtn = Cell.CreateButton(descriptionPane, L["Compatibility"] or "Compatibility", "accent", {110, 17})
+    compatibilityBtn:SetPoint("TOPRIGHT", snippetsBtn, "TOPLEFT", 1, 0)
+    compatibilityBtn:SetScript("OnClick", function()
+        F.ShowCompatibilityReport()
+    end)
+
     local descText = descriptionPane:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
     descText:SetPoint("TOPLEFT", 5, -27)
     descText:SetPoint("RIGHT", -10, 0)
+    descText:SetPoint("BOTTOM", 0, 22)
     descText:SetJustifyH("LEFT")
     descText:SetSpacing(5)
     descText:SetText(L["ABOUT"])
+
+    compatibilityStatus = descriptionPane:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    compatibilityStatus:SetPoint("BOTTOMLEFT", 5, 6)
+    compatibilityStatus:SetPoint("BOTTOMRIGHT", -10, 6)
+    compatibilityStatus:SetJustifyH("LEFT")
+    compatibilityStatus:SetWordWrap(true)
+    UpdateCompatibilityStatus()
 end
 
 
@@ -524,20 +606,25 @@ local function CreateImportExportPane()
     local iePane = Cell.CreateTitledPane(aboutTab, L["Import & Export All Settings"], 422, 50)
     iePane:SetPoint("TOPLEFT", 5, -595)
 
-    local importBtn = Cell.CreateButton(iePane, L["Import"], "accent-hover", {134, 20})
+    local importBtn = Cell.CreateButton(iePane, L["Import"], "accent-hover", {100, 20})
     importBtn:SetPoint("TOPLEFT", 5, -27)
     importBtn:SetScript("OnClick", F.ShowImportFrame)
     importBtn:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\import", {16, 16}, {"LEFT", 2, 0})
 
-    local exportBtn = Cell.CreateButton(iePane, L["Export"], "accent-hover", {134, 20})
+    local exportBtn = Cell.CreateButton(iePane, L["Export"], "accent-hover", {100, 20})
     exportBtn:SetPoint("TOPLEFT", importBtn, "TOPRIGHT", 5, 0)
     exportBtn:SetScript("OnClick", F.ShowExportFrame)
     exportBtn:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\export", {16, 16}, {"LEFT", 2, 0})
 
-    local backupBtn = Cell.CreateButton(iePane, L["Backups"], "accent-hover", {134, 20})
+    local backupBtn = Cell.CreateButton(iePane, L["Backups"], "accent-hover", {100, 20})
     backupBtn:SetPoint("TOPLEFT", exportBtn, "TOPRIGHT", 5, 0)
     backupBtn:SetScript("OnClick", F.ShowBackupFrame)
     backupBtn:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\backup", {16, 16}, {"LEFT", 2, 0})
+
+    local notificationsBtn = Cell.CreateButton(iePane, "Notifications", "accent-hover", {100, 20})
+    notificationsBtn:SetPoint("TOPLEFT", backupBtn, "TOPRIGHT", 5, 0)
+    notificationsBtn:SetScript("OnClick", F.ShowNotificationCenter)
+    notificationsBtn:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2", {16, 16}, {"LEFT", 2, 0})
 end
 
 -------------------------------------------------
@@ -559,11 +646,13 @@ local function ShowTab(tab)
         end
         aboutTab:Show()
         descriptionPane:SetTitle("Cell "..Cell.version)
+        UpdateCompatibilityStatus()
     else
         aboutTab:Hide()
     end
 end
 Cell.RegisterCallback("ShowOptionsTab", "AboutTab_ShowTab", ShowTab)
+Cell.RegisterCallback("UpdateCompatibilityReport", "AboutTab_UpdateCompatibilityReport", UpdateCompatibilityStatus)
 
 UpdateFont = function(fs)
     if not fs then return end

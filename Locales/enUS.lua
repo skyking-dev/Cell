@@ -71,6 +71,7 @@ select(2, ...).L = setmetatable({
     ["Default"] = _G.DEFAULT,
 
     ["ABOUT"] = "Cell is a nice raid frame addon inspired by several great addons, such as CompactRaid, Grid2, Aptechka and VuhDo.\nWith a more human-friendly interface, Cell can provide a better user experience, better than ever.",
+    ["Compatibility"] = "Compatibility",
     ["RESET"] = "Cell requires a full reset after updating from a very old version",
     ["RESET_CHARACTER"] = "Cell requires a character profile reset after updating from a very old version",
     ["RESET_INCLUDES"] = "Only Click-Castings and Layout Auto Switch are included",
@@ -90,6 +91,18 @@ select(2, ...).L = setmetatable({
 
     ["CHANGELOGS"] = [[
         <h2>If there are any issues after an update, check through all code snippets first.</h2>
+        <br/>
+
+        <h1>r275.8-skyking-dev Compatibility reports, diagnostics, and curation tools</h1>
+        <h2>Compatibility &amp; Stability</h2>
+        <p>+ Added a compatibility report that persists "No" on old-profile reset prompts and points to affected layouts and indicators.</p>
+        <p>+ Indicators now flag compatibility problems directly in the list, with red highlighting and tooltips for invalid spell IDs and built-in mismatches.</p>
+        <p>* Fixed secret boolean crashes in range and group checks by guarding UnitIsUnit, UnitInParty, UnitInRaid, and related target-resolution helpers.</p>
+        <h2>Tools &amp; Backups</h2>
+        <p>+ Added an About notifications center and automatic backups around imports and destructive flows.</p>
+        <p>+ Added Midnight diagnostics tools for comm restrictions, queued sync traffic, and group version visibility.</p>
+        <h2>Raid Debuffs</h2>
+        <p>+ Added raid debuff curation metadata, reporting, and review states for Midnight cleanup.</p>
         <br/>
 
         <h1>r275.5 Added Midnight Raid Debuffs</h1>
