@@ -274,7 +274,7 @@ function I.UpdateCustomIndicators(unitButton, auraInfo)
         start = 0
         duration = 0
     end
-    local castByMe = auraInfo.sourceUnit == "player" or auraInfo.sourceUnit == "pet"
+    local sourceUnit = auraInfo.sourceUnit
 
     -- check Bleed (isHarmful is safe: guarded by isHelpful non-secret check above)
     if auraInfo.isHarmful then
@@ -293,7 +293,13 @@ function I.UpdateCustomIndicators(unitButton, auraInfo)
             -- Midnight 12.0.0+: spell (name or spellId) may be secret; cannot use as table key
             if spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell] or (indicatorTable["auras"][0] and duration ~= 0) then -- is in indicator spell list
                 -- check caster
-                if (indicatorTable["castBy"] == "me" and castByMe) or (indicatorTable["castBy"] == "others" and not castByMe) or (indicatorTable["castBy"] == "anyone") then
+                local castBy = indicatorTable["castBy"]
+                local castByMatches = castBy == "anyone"
+                if not castByMatches and F.IsValueNonSecret(sourceUnit) then
+                    local castByMe = sourceUnit == "player" or sourceUnit == "pet"
+                    castByMatches = (castBy == "me" and castByMe) or (castBy == "others" and not castByMe)
+                end
+                if castByMatches then
                     if auraType == "buff" then
                         Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
                     else -- debuff

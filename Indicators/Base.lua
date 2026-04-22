@@ -688,6 +688,11 @@ end
 
 -- BorderIcon: SetCooldownFromAura — drives CooldownFrame with DurationObject
 local function BorderIcon_SetCooldownFromAura(frame, unit, auraInstanceID, texture, refreshing)
+    if texture == nil then
+        frame:Hide()
+        return
+    end
+
     -- Icon and stack
     frame.icon:SetTexture(texture)
     if _GetAuraAppDisplayCount then
@@ -933,6 +938,11 @@ local function BorderIcon_ShowDuration(frame, show)
     end
 end
 
+local function BorderIcon_ShowStack(frame, show)
+    frame.showStack = show
+    frame.stack:SetShown(show)
+end
+
 local function BorderIcon_UpdatePixelPerfect(frame)
     P.Resize(frame)
     P.Repoint(frame)
@@ -998,7 +1008,7 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     -- BarIcon-compatible methods (no-ops for BorderIcon, needed when used as
     -- cooldown indicator child frames which call these on all children)
     frame.ShowAnimation = function() end
-    frame.ShowStack = function() end
+    frame.ShowStack = BorderIcon_ShowStack
     frame.SetupGlow = function() end
     frame.UpdatePixelPerfect = BorderIcon_UpdatePixelPerfect
 

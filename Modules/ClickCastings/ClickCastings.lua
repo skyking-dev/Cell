@@ -282,6 +282,13 @@ if Cell.isRetail then
             self:ClearBindings()
         ]])
 
+        b:SetAttribute("_onmousedown", [[
+            -- Refresh secure hover bindings before the click is handled. This covers
+            -- stale hover states where OnEnter did not rebuild keyboard/wheel binds.
+            self:ClearBindings()
+            self:Run(self:GetAttribute("snippet"))
+        ]])
+
         -- wrapFrame:WrapScript(b, "OnLeave", [[
         --     -- print("OnLeave")
         --     mouseoverbutton = nil
@@ -362,6 +369,13 @@ else
         b:SetAttribute("_onleave", [[
             -- print("_onleave")
             self:ClearBindings()
+        ]])
+
+        b:SetAttribute("_onmousedown", [[
+            -- Refresh secure hover bindings before the click is handled. This covers
+            -- stale hover states where OnEnter did not rebuild keyboard/wheel binds.
+            self:ClearBindings()
+            self:Run(self:GetAttribute("snippet"))
         ]])
 
         -- wrapFrame:WrapScript(b, "OnLeave", [[

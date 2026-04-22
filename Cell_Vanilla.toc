@@ -1,6 +1,6 @@
 ## Interface: 11508
 ## Title: Cell
-## Version: r275.8-skyking-dev
+## Version: r275.9-beta
 ## Author: enderneko
 ## X-Flavor: Vanilla
 ## SavedVariables: CellDB, CellDBBackup

@@ -109,6 +109,12 @@ function I.Cooldowns_ShowAnimation(self, show)
     end
 end
 
+function I.Cooldowns_ShowStack(self, show)
+    for i = 1, #self do
+        self[i]:ShowStack(show)
+    end
+end
+
 function I.Cooldowns_SetCooldownStyle(self, style)
     for i = 1, #self do
         if self[i].SetCooldownStyle then
@@ -480,10 +486,24 @@ local function Debuffs_EnableBlacklistShortcut(debuffs, enabled)
 
     for i = 1, 10 do
         if enabled then
+            debuffs[i]:EnableMouse(true)
+            if debuffs[i].SetMouseClickEnabled then
+                debuffs[i]:SetMouseClickEnabled(true)
+            end
+            if not debuffs.showTooltip and debuffs[i].SetMouseMotionEnabled then
+                debuffs[i]:SetMouseMotionEnabled(false)
+            end
             debuffs[i]:SetScript("OnMouseUp", function(self, button, isInside)
-                if button == "RightButton" and isInside and IsLeftAltKeyDown() and IsLeftControlKeyDown()
-                    and self.spellId and F.IsValueNonSecret(self.spellId)
-                    and not F.TContains(CellDB["debuffBlacklist"], self.spellId) then
+                if button ~= "RightButton" or not isInside or not IsLeftAltKeyDown() or not IsLeftControlKeyDown() then
+                    return
+                end
+
+                if not (self.spellId and F.IsValueNonSecret(self.spellId)) then
+                    F.Print("Cannot blacklist this debuff: Midnight is hiding its spell ID.")
+                    return
+                end
+
+                if not F.TContains(CellDB["debuffBlacklist"], self.spellId) then
                     -- print msg
                     local name, icon = F.GetSpellInfo(self.spellId)
                     if name and icon then
@@ -527,6 +547,7 @@ function I.CreateDebuffs(parent)
 
     debuffs.ShowDuration = I.Cooldowns_ShowDuration
     debuffs.ShowAnimation = I.Cooldowns_ShowAnimation
+    debuffs.ShowStack = I.Cooldowns_ShowStack
     debuffs.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     debuffs.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
@@ -1065,6 +1086,7 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
                 unitToken = unit,
                 auraIndex = i,
                 parent = holder,
+                isContainer = false,
                 showCountdownFrame = _showCountdownFrame,
                 showCountdownNumbers = _showCountdownNumbers,
                 iconInfo = {
