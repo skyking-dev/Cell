@@ -61,6 +61,40 @@ end
 function I.Cooldowns_UpdateSize_WithSpacing(self, iconsShown)
     if not (self.width and self.height and self.orientation) then return end -- not init
 
+    if self.numPerLine then
+        local count = iconsShown
+        if not count then
+            count = 0
+            for i = 1, #self do
+                if self[i]:IsShown() then
+                    count = i
+                end
+            end
+        end
+
+        if iconsShown then
+            for i = iconsShown + 1, #self do
+                self[i]:Hide()
+            end
+        end
+
+        if count == 0 then
+            self:_SetSize(0.001, 0.001)
+            return
+        end
+
+        local perLine = math.min(self.numPerLine, count)
+        local lines = ceil(count / perLine)
+        local spacingX, spacingY = self.spacingX or 1, self.spacingY or 1
+
+        if self.orientation == "horizontal" then
+            P.SetGridSize(self, self.width, self.height, spacingX, spacingY, perLine, lines)
+        else
+            P.SetGridSize(self, self.width, self.height, spacingX, spacingY, lines, perLine)
+        end
+        return
+    end
+
     if iconsShown then -- call from I.UnitButton_UpdateBuffs or preview
         for i = iconsShown + 1, #self do
             self[i]:Hide()
@@ -173,6 +207,7 @@ end
 
 function I.Cooldowns_SetOrientation_WithSpacing(self, orientation)
     local point1, point2, x, y
+    local newLinePoint2, newLineX, newLineY
 
     if orientation == "left-to-right" then
         point1 = "TOPLEFT"
@@ -180,36 +215,70 @@ function I.Cooldowns_SetOrientation_WithSpacing(self, orientation)
         self.orientation = "horizontal"
         x = 1
         y = 0
+        newLinePoint2 = "BOTTOMLEFT"
+        newLineX = 0
+        newLineY = -(self.spacingY or 1)
     elseif orientation == "right-to-left" then
         point1 = "TOPRIGHT"
         point2 = "TOPLEFT"
         self.orientation = "horizontal"
         x = -1
         y = 0
+        newLinePoint2 = "BOTTOMRIGHT"
+        newLineX = 0
+        newLineY = -(self.spacingY or 1)
     elseif orientation == "top-to-bottom" then
         point1 = "TOPLEFT"
         point2 = "BOTTOMLEFT"
         self.orientation = "vertical"
         x = 0
         y = -1
+        newLinePoint2 = "TOPRIGHT"
+        newLineX = self.spacingX or 1
+        newLineY = 0
     elseif orientation == "bottom-to-top" then
         point1 = "BOTTOMLEFT"
         point2 = "TOPLEFT"
         self.orientation = "vertical"
         x = 0
         y = 1
+        newLinePoint2 = "BOTTOMRIGHT"
+        newLineX = self.spacingX or 1
+        newLineY = 0
     end
+
+    self.growth = orientation
+    x = x * (self.spacingX or 1)
+    y = y * (self.spacingY or 1)
 
     for i = 1, #self do
         P.ClearPoints(self[i])
         if i == 1 then
             P.Point(self[i], point1)
+        elseif self.numPerLine and i % self.numPerLine == 1 then
+            P.Point(self[i], point1, self[i-self.numPerLine], newLinePoint2, newLineX, newLineY)
         else
             P.Point(self[i], point1, self[i-1], point2, x, y)
         end
     end
 
     self:UpdateSize()
+
+    if self.UpdatePrivateAuraAnchor then
+        self:UpdatePrivateAuraAnchor(self.unit)
+    end
+end
+
+function I.Cooldowns_SetNumPerLine_WithSpacing(self, numPerLine)
+    self.numPerLine = math.min(tonumber(numPerLine) or #self, #self)
+    self.numPerLine = math.max(self.numPerLine, 1)
+    self:SetOrientation(self.growth or "left-to-right")
+end
+
+function I.Cooldowns_SetSpacing_WithSpacing(self, spacing)
+    self.spacingX = spacing and spacing[1] or 1
+    self.spacingY = spacing and spacing[2] or 1
+    self:SetOrientation(self.growth or "left-to-right")
 end
 
 -------------------------------------------------
@@ -1028,11 +1097,27 @@ end
 local function PrivateAuras_RemoveAllAnchors(self)
     if not (C_UnitAuras and C_UnitAuras.RemovePrivateAuraAnchor) then return end
 
+    if InCombatLockdown() then
+        if not self._removeDeferred then
+            self._removeDeferred = true
+            local f = CreateFrame("Frame")
+            f:RegisterEvent("PLAYER_REGEN_ENABLED")
+            f:SetScript("OnEvent", function()
+                f:UnregisterAllEvents()
+                self._removeDeferred = nil
+                PrivateAuras_RemoveAllAnchors(self)
+            end)
+        end
+        return
+    end
+
     for i = 1, #self do
         local holder = self[i]
         if holder.auraAnchorID then
-            C_UnitAuras.RemovePrivateAuraAnchor(holder.auraAnchorID)
-            holder.auraAnchorID = nil
+            local success = pcall(C_UnitAuras.RemovePrivateAuraAnchor, holder.auraAnchorID)
+            if success then
+                holder.auraAnchorID = nil
+            end
         end
     end
 end
@@ -1047,6 +1132,21 @@ local function PrivateAuras_UpdateHolderVisibility(self, maxAuras)
     end
 
     self:UpdateSize(maxAuras)
+end
+
+local function PrivateAuras_UpdateSize(self, iconsShown)
+    if iconsShown then
+        for i = iconsShown + 1, #self do
+            self[i]:Hide()
+        end
+    end
+
+    -- Keep the configured indicator anchor stable. The private aura slots can
+    -- grow outside this frame, but the parent itself must not resize with
+    -- Max Displayed or the visual position drifts when anchored by center/top.
+    if self.width and self.height then
+        self:_SetSize(self.width, self.height)
+    end
 end
 
 local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
@@ -1082,7 +1182,7 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
 
         for i = 1, maxAuras do
             local holder = self[i]
-            holder.auraAnchorID = C_UnitAuras.AddPrivateAuraAnchor({
+            local success, auraAnchorID = pcall(C_UnitAuras.AddPrivateAuraAnchor, {
                 unitToken = unit,
                 auraIndex = i,
                 parent = holder,
@@ -1109,6 +1209,9 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
                 --     offsetY = 0,
                 -- },
             })
+            if success then
+                holder.auraAnchorID = auraAnchorID
+            end
         end
     end
 end
@@ -1120,9 +1223,14 @@ function I.CreatePrivateAuras(parent)
 
     privateAuras.UpdatePrivateAuraAnchor = PrivateAuras_UpdatePrivateAuraAnchor
     privateAuras._SetSize = privateAuras.SetSize
-    privateAuras.UpdateSize = I.Cooldowns_UpdateSize_WithSpacing
+    privateAuras.UpdateSize = PrivateAuras_UpdateSize
     privateAuras.SetOrientation = I.Cooldowns_SetOrientation_WithSpacing
+    privateAuras.SetNumPerLine = I.Cooldowns_SetNumPerLine_WithSpacing
+    privateAuras.SetSpacing = I.Cooldowns_SetSpacing_WithSpacing
     privateAuras.maxAuras = 1
+    privateAuras.numPerLine = 1
+    privateAuras.spacingX = 1
+    privateAuras.spacingY = 1
 
     for i = 1, PRIVATE_AURAS_MAX do
         local holder = CreateFrame("Frame", nil, privateAuras)
@@ -1130,6 +1238,13 @@ function I.CreatePrivateAuras(parent)
     end
 
     privateAuras:SetOrientation("left-to-right")
+
+    privateAuras:HookScript("OnShow", function()
+        privateAuras:UpdatePrivateAuraAnchor(privateAuras.unit)
+    end)
+    privateAuras:HookScript("OnHide", function()
+        PrivateAuras_RemoveAllAnchors(privateAuras)
+    end)
 
     function privateAuras:SetSize(width, height)
         privateAuras.width = width

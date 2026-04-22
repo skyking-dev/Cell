@@ -1703,7 +1703,7 @@ if Cell.isRetail or Cell.isMists then
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "enabled", "privateAuraOptions", "size-square", "position", "frameLevel"},
+        ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "orientation", "position", "frameLevel"},
         ["targetedSpells"] = Cell.isMidnight
             and {"enabled", "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"}
             or {"enabled", "checkbutton:showAllSpells:"..L["Glow is only available to the spells in the list below"], "targetedSpellsDisplayMode", "targetedSpellsList", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
@@ -2131,6 +2131,7 @@ local function ShowIndicatorSettings(id)
 
         -- numPerLine:X
         elseif string.find(currentSetting, "^numPerLine:") then
+            indicatorTable["numPerLine"] = indicatorTable["numPerLine"] or indicatorTable["num"] or 1
             w:SetDBValue(indicatorTable["numPerLine"], tonumber(select(2,string.split(":", currentSetting))))
             w:SetFunc(function(value)
                 indicatorTable["numPerLine"] = value
@@ -2168,6 +2169,22 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 -- NOTE: already changed in widget
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "format", indicatorTable["format"])
+            end)
+
+        elseif currentSetting == "spacing" then
+            indicatorTable["spacing"] = indicatorTable["spacing"] or {1, 1}
+            w:SetDBValue(indicatorTable["spacing"])
+            w:SetFunc(function(value)
+                indicatorTable["spacing"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "spacing", value)
+            end)
+
+        elseif currentSetting == "orientation" then
+            indicatorTable["orientation"] = indicatorTable["orientation"] or "left-to-right"
+            w:SetDBValue(indicatorTable["orientation"])
+            w:SetFunc(function(value)
+                indicatorTable["orientation"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "orientation", value)
             end)
 
         -- common

@@ -473,6 +473,9 @@ Cell.defaults.layout = {
             ["frameLevel"] = 25,
             ["size"] = {18, 18},
             ["privateAuraOptions"] = {true, false, 1},
+            ["numPerLine"] = 1,
+            ["spacing"] = {1, 1},
+            ["orientation"] = "left-to-right",
         }, -- 25
         {
             ["name"] = "Targeted Spells",
