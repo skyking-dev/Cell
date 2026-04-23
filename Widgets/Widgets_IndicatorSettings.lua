@@ -6029,16 +6029,20 @@ local function CreateSetting_PrivateAuraOptions(parent)
     local widget
 
     if not settingWidgets["privateAuraOptions"] then
-        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 108)
+        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 145)
         settingWidgets["privateAuraOptions"] = widget
-        widget.options = {true, false, 1}
+        widget.options = {true, false, 1, false, 1}
 
         widget.cb1 = Cell.CreateCheckButton(widget, L["Show countdown swipe"])
         widget.cb1:SetPoint("TOPLEFT", 5, -8)
         widget.cb2 = Cell.CreateCheckButton(widget, L["Show countdown number"])
         widget.cb2:SetPoint("TOPLEFT", widget.cb1, "BOTTOMLEFT", 0, -7)
+        widget.cb3 = Cell.CreateCheckButton(widget, L["Hide aura tooltip"])
+        widget.cb3:SetPoint("TOPLEFT", widget.cb2, "BOTTOMLEFT", 0, -7)
         widget.maxAuras = Cell.CreateSlider(L["Max Displayed"], widget, 1, 5, 110, 1)
-        widget.maxAuras:SetPoint("TOPLEFT", widget.cb2, "BOTTOMLEFT", 0, -18)
+        widget.maxAuras:SetPoint("TOPLEFT", widget.cb3, "BOTTOMLEFT", 0, -18)
+        widget.borderScale = Cell.CreateSlider(L["Border Scale"], widget, 0.5, 2, 110, 0.05)
+        widget.borderScale:SetPoint("LEFT", widget.maxAuras, "RIGHT", 25, 0)
 
         -- callback
         function widget:SetFunc(func)
@@ -6046,29 +6050,79 @@ local function CreateSetting_PrivateAuraOptions(parent)
                 widget.cb2:SetEnabled(checked)
                 widget.options[1] = checked
                 widget.options[2] = widget.cb2:GetChecked()
+                widget.options[4] = widget.cb3:GetChecked()
                 func(widget.options)
             end
             widget.cb2.onClick = function(checked)
                 widget.options[1] = widget.cb1:GetChecked()
                 widget.options[2] = checked
+                widget.options[4] = widget.cb3:GetChecked()
+                func(widget.options)
+            end
+            widget.cb3.onClick = function(checked)
+                widget.options[1] = widget.cb1:GetChecked()
+                widget.options[2] = widget.cb2:GetChecked()
+                widget.options[4] = checked
                 func(widget.options)
             end
             widget.maxAuras.afterValueChangedFn = function(value)
                 widget.options[3] = value
                 func(widget.options)
             end
+            widget.borderScale.afterValueChangedFn = function(value)
+                widget.options[5] = value
+                func(widget.options)
+            end
         end
 
         -- show db value
         function widget:SetDBValue(t)
-            widget.options = {t[1], t[2], t[3] or 1}
+            widget.options = {t[1], t[2], t[3] or 1, t[4] or false, t[5] or 1}
             widget.cb1:SetChecked(t[1])
             widget.cb2:SetChecked(t[2])
             widget.cb2:SetEnabled(t[1])
+            widget.cb3:SetChecked(t[4] or false)
             widget.maxAuras:SetValue(t[3] or 1)
+            widget.borderScale:SetValue(t[5] or 1)
         end
     else
         widget = settingWidgets["privateAuraOptions"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Warning(parent)
+    local widget
+
+    if not settingWidgets["warning"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Warning", parent, 240, 64)
+        settingWidgets["warning"] = widget
+
+        widget.bg = widget:CreateTexture(nil, "BACKGROUND")
+        widget.bg:SetAllPoints()
+        widget.bg:SetColorTexture(0.28, 0.18, 0.04, 0.35)
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("TOPLEFT", 8, -6)
+        widget.text:SetPoint("BOTTOMRIGHT", -8, 6)
+        widget.text:SetJustifyH("LEFT")
+        widget.text:SetJustifyV("MIDDLE")
+        widget.text:SetWordWrap(true)
+        widget.text:SetTextColor(1, 0.78, 0.35)
+
+        function widget:SetDBValue(text)
+            widget.text:SetText(text)
+            C_Timer.After(0, function()
+                if not widget:IsShown() then return end
+                widget:SetHeight(math.max(64, math.ceil(widget.text:GetStringHeight()) + 16))
+            end)
+        end
+        function widget:SetFunc()
+        end
+    else
+        widget = settingWidgets["warning"]
     end
 
     widget:Show()
@@ -6927,6 +6981,7 @@ local builders = {
     ["highlightType"] = CreateSetting_HighlightType,
     ["thresholds"] = CreateSetting_Thresholds,
     ["privateAuraOptions"] = CreateSetting_PrivateAuraOptions,
+    ["warning"] = CreateSetting_Warning,
     ["shape"] = CreateSetting_Shape,
     ["targetCounterFilters"] = CreateSetting_TargetCounterFilters,
     ["dispelFilters"] = CreateSetting_DispelFilters,
@@ -6985,6 +7040,8 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
             tinsert(widgetsTable, CreateSetting_Auras(parent, 2))
         -- elseif setting == "cleuAuras" then
         --     tinsert(widgetsTable, CreateSetting_CleuAuras(parent))
+        elseif string.find(setting, "^warning:") then
+            tinsert(widgetsTable, CreateSetting_Warning(parent))
         else -- tips
             tinsert(widgetsTable, CreateSetting_Tips(parent, setting))
         end

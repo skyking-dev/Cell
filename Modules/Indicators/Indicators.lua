@@ -1703,11 +1703,11 @@ if Cell.isRetail or Cell.isMists then
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "orientation", "position", "frameLevel"},
+        ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "orientation", "position", "frameLevel"},
         ["targetedSpells"] = Cell.isMidnight
-            and {"enabled", "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"}
+            and {"warning:"..L["Targeted spells may use restricted data in Midnight. Some updates can fall back to safer delayed paths."], "enabled", "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"}
             or {"enabled", "checkbutton:showAllSpells:"..L["Glow is only available to the spells in the list below"], "targetedSpellsDisplayMode", "targetedSpellsList", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
-        ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
+        ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "warning:"..L["Target Counter depends on visible enemy nameplates and can be inaccurate when nameplates are hidden or restricted."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["crowdControls"] = {"enabled", "builtInCrowdControls", "customCrowdControls", midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
@@ -1884,8 +1884,14 @@ local function ShowIndicatorSettings(id)
         if currentSetting == "durationVisibility" or currentSetting == "durationVisibilitySimple" then currentSetting = "showDuration" end
         if currentSetting == "powerFormat" then currentSetting = "format" end
 
+        -- warning
+        if string.find(currentSetting, "^warning:") then
+            w:SetDBValue(string.match(currentSetting, "^warning:(.+)") or "")
+            w:SetFunc(function()
+            end)
+
         -- enabled
-        if currentSetting == "enabled" then
+        elseif currentSetting == "enabled" then
             w:SetDBValue(indicatorTable[currentSetting])
             w:SetFunc(function(value)
                 indicatorTable[currentSetting] = value

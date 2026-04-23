@@ -1079,6 +1079,22 @@ end
 -- private auras
 -------------------------------------------------
 local PRIVATE_AURAS_MAX = 5
+local privateAurasPending = {}
+local privateAurasCombatFrame = CreateFrame("Frame")
+
+local function PrivateAuras_Queue(self, func)
+    privateAurasPending[self] = func
+    privateAurasCombatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+
+privateAurasCombatFrame:SetScript("OnEvent", function()
+    privateAurasCombatFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+
+    for self, func in pairs(privateAurasPending) do
+        privateAurasPending[self] = nil
+        pcall(func)
+    end
+end)
 
 local function PrivateAuras_GetMaxAuras(self, options)
     local maxAuras = options and options[3] or self.maxAuras or 1
@@ -1098,16 +1114,9 @@ local function PrivateAuras_RemoveAllAnchors(self)
     if not (C_UnitAuras and C_UnitAuras.RemovePrivateAuraAnchor) then return end
 
     if InCombatLockdown() then
-        if not self._removeDeferred then
-            self._removeDeferred = true
-            local f = CreateFrame("Frame")
-            f:RegisterEvent("PLAYER_REGEN_ENABLED")
-            f:SetScript("OnEvent", function()
-                f:UnregisterAllEvents()
-                self._removeDeferred = nil
-                PrivateAuras_RemoveAllAnchors(self)
-            end)
-        end
+        PrivateAuras_Queue(self, function()
+            PrivateAuras_RemoveAllAnchors(self)
+        end)
         return
     end
 
@@ -1134,6 +1143,24 @@ local function PrivateAuras_UpdateHolderVisibility(self, maxAuras)
     self:UpdateSize(maxAuras)
 end
 
+local function PrivateAuras_UpdateAnchorFrame(self, holder)
+    local anchorFrame = holder.privateAuraAnchor or holder
+    anchorFrame:ClearAllPoints()
+    anchorFrame:SetPoint("CENTER", holder)
+
+    if self.hideTooltip then
+        anchorFrame:SetSize(0.001, 0.001)
+    else
+        anchorFrame:SetSize(holder:GetWidth(), holder:GetHeight())
+    end
+
+    anchorFrame:EnableMouse(not self.hideTooltip)
+    if anchorFrame.SetPropagateMouseMotion then anchorFrame:SetPropagateMouseMotion(not self.hideTooltip) end
+    if anchorFrame.SetPropagateMouseClicks then anchorFrame:SetPropagateMouseClicks(not self.hideTooltip) end
+
+    return anchorFrame
+end
+
 local function PrivateAuras_UpdateSize(self, iconsShown)
     if iconsShown then
         for i = iconsShown + 1, #self do
@@ -1154,17 +1181,14 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
     -- Defer until combat ends if needed.
     if InCombatLockdown() then
         self._pendingUnit = unit
-        if not self._combatDeferred then
-            self._combatDeferred = true
-            local f = CreateFrame("Frame")
-            f:RegisterEvent("PLAYER_REGEN_ENABLED")
-            f:SetScript("OnEvent", function()
-                f:UnregisterAllEvents()
-                self._combatDeferred = nil
+        PrivateAuras_Queue(self, function()
+            if self:IsShown() then
                 PrivateAuras_UpdatePrivateAuraAnchor(self, self._pendingUnit)
-                self._pendingUnit = nil
-            end)
-        end
+            else
+                PrivateAuras_RemoveAllAnchors(self)
+            end
+            self._pendingUnit = nil
+        end)
         return
     end
 
@@ -1182,20 +1206,21 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
 
         for i = 1, maxAuras do
             local holder = self[i]
+            local anchorFrame = PrivateAuras_UpdateAnchorFrame(self, holder)
             local success, auraAnchorID = pcall(C_UnitAuras.AddPrivateAuraAnchor, {
                 unitToken = unit,
                 auraIndex = i,
-                parent = holder,
+                parent = anchorFrame,
                 isContainer = false,
                 showCountdownFrame = _showCountdownFrame,
                 showCountdownNumbers = _showCountdownNumbers,
                 iconInfo = {
                     iconWidth = holder:GetWidth(),
                     iconHeight = holder:GetHeight(),
-                    borderScale = holder:GetWidth() / 16,
+                    borderScale = (holder:GetWidth() / 16) * (self.borderScale or 1),
                     iconAnchor = {
                         point = "CENTER",
-                        relativeTo = holder,
+                        relativeTo = anchorFrame,
                         relativePoint = "CENTER",
                         offsetX = 0,
                         offsetY = 0,
@@ -1231,9 +1256,13 @@ function I.CreatePrivateAuras(parent)
     privateAuras.numPerLine = 1
     privateAuras.spacingX = 1
     privateAuras.spacingY = 1
+    privateAuras.borderScale = 1
+    privateAuras.hideTooltip = false
 
     for i = 1, PRIVATE_AURAS_MAX do
         local holder = CreateFrame("Frame", nil, privateAuras)
+        holder.privateAuraAnchor = CreateFrame("Frame", nil, holder)
+        holder.privateAuraAnchor:SetPoint("CENTER", holder)
         tinsert(privateAuras, holder)
     end
 
@@ -1251,6 +1280,7 @@ function I.CreatePrivateAuras(parent)
         privateAuras.height = height
         for i = 1, #privateAuras do
             privateAuras[i]:SetSize(width, height)
+            PrivateAuras_UpdateAnchorFrame(privateAuras, privateAuras[i])
         end
         PrivateAuras_UpdateHolderVisibility(privateAuras, PrivateAuras_GetMaxAuras(privateAuras))
         privateAuras:UpdatePrivateAuraAnchor(privateAuras.unit)
@@ -1260,9 +1290,12 @@ function I.CreatePrivateAuras(parent)
         self.showCountdownFrame = t[1]
         self.showCountdownNumbers = t[2]
         self.maxAuras = PrivateAuras_GetMaxAuras(self, t)
+        self.hideTooltip = t[4] or false
+        self.borderScale = tonumber(t[5]) or 1
 
         for i = 1, #self do
             local holder = self[i]
+            PrivateAuras_UpdateAnchorFrame(self, holder)
             if holder.cooldown then
                 holder.cooldown:SetDrawSwipe(self.showCountdownFrame)
                 holder.cooldown:SetHideCountdownNumbers(not (self.showCountdownFrame and self.showCountdownNumbers))
@@ -1415,15 +1448,19 @@ function I.CreateNameText(parent)
 
         -- only check nickname for players
         if parent.states.isPlayer then
-            if CELL_NICKTAG_ENABLED and Cell.NickTag then
+            if F.IsValueNonSecret(parent.states.name) and CELL_NICKTAG_ENABLED and Cell.NickTag then
                 name = Cell.NickTag:GetNickname(parent.states.name, nil, true)
             end
-            name = name or F.GetNickname(parent.states.name, parent.states.fullName)
+            if F.IsValueNonSecret(parent.states.name) and F.IsValueNonSecret(parent.states.fullName) then
+                name = name or F.GetNickname(parent.states.name, parent.states.fullName)
+            else
+                name = parent.states.name
+            end
         else
             name = parent.states.name
         end
 
-        if Cell.loaded and CellDB["general"]["translit"] then
+        if Cell.loaded and CellDB["general"]["translit"] and F.IsValueNonSecret(name) then
             name = LibTranslit:Transliterate(name)
         end
 
@@ -1439,10 +1476,11 @@ function I.CreateNameText(parent)
             end
         end
 
-        if nameText.name:GetText() then
+        local currentNameText = nameText.name:GetText()
+        if currentNameText and F.IsValueNonSecret(currentNameText) then
             if nameText.isPreview then
                 if nameText.showGroupNumber then
-                    nameText.name:SetText("|cffbbbbbb7-|r"..nameText.name:GetText())
+                    nameText.name:SetText("|cffbbbbbb7-|r"..currentNameText)
                 end
             else
                 if IsInRaid() and nameText.showGroupNumber then
@@ -1450,13 +1488,20 @@ function I.CreateNameText(parent)
                     if raidIndex then
                         local subgroup = select(3, GetRaidRosterInfo(raidIndex))
                         -- nameText.name:SetText("|TInterface\\AddOns\\Cell\\Media\\Icons\\group"..subgroup..":0:0:0:-1:64:64:6:58:6:58|t"..nameText.name:GetText())
-                        nameText.name:SetText("|cffbbbbbb"..subgroup.."-|r"..nameText.name:GetText())
+                        nameText.name:SetText("|cffbbbbbb"..subgroup.."-|r"..currentNameText)
                     end
                 end
             end
         end
 
-        nameText:SetSize(nameText.name:GetWidth(), nameText.name:GetHeight())
+        local width, height = nameText.name:GetWidth(), nameText.name:GetHeight()
+        if not F.IsValueNonSecret(width) or width <= 0 then
+            width = parent.widgets.healthBar and parent.widgets.healthBar:GetWidth() or 50
+        end
+        if not F.IsValueNonSecret(height) or height <= 0 then
+            height = 14
+        end
+        nameText:SetSize(width, height)
     end
 
     function nameText:UpdateVehicleName()
